@@ -100,21 +100,10 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Type: text/html\r\n" +
 				"Content-Length: 123\r\n" +
 				"\r\n",
-			expected: NewHeaders(map[string]string{
-				"Content-Type":   "text/html",
-				"Content-Length": "123",
-			}),
-		},
-		{
-			desc: "simple headers (case insensitive)",
-			input: "" +
-				"content-TyPE: text/html\r\n" +
-				"coNTENt-lEngtH: 123\r\n" +
-				"\r\n",
-			expected: NewHeaders(map[string]string{
-				"Content-Type":   "text/html",
-				"Content-Length": "123",
-			}),
+			expected: Headers{
+				{"Content-Type", "text/html"},
+				{"Content-Length", "123"},
+			},
 		},
 		{
 			desc: "headers with leading and trailing whitespace",
@@ -122,10 +111,10 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Type:   text/html  \r\n" +
 				"Content-Length:   123\t\r\n" +
 				"\r\n",
-			expected: NewHeaders(map[string]string{
-				"Content-Type":   "text/html",
-				"Content-Length": "123",
-			}),
+			expected: Headers{
+				{"Content-Type", "text/html"},
+				{"Content-Length", "123"},
+			},
 		},
 		{
 			desc: "field name is not a valid token",
@@ -133,10 +122,10 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"content type: text/html\r\n" +
 				"Content-Length: 123\r\n" +
 				"\r\n",
-			expected: NewHeaders(map[string]string{
-				"content type":   "text/html",
-				"Content-Length": "123",
-			}),
+			expected: Headers{
+				{"content type", "text/html"},
+				{"Content-Length", "123"},
+			},
 		},
 		{
 			desc: "headers exceeding limit",
@@ -154,7 +143,7 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				opts: tc.opts,
 			}
 
-			h := NewHeaders(nil)
+			h := Headers{}
 			err := d.decodeHeaders(&h)
 			if tc.wantErr {
 				s.Error(err)
@@ -192,11 +181,11 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 			Target:  "/example",
 			Version: Version{1, 1},
 		},
-		Headers: NewHeaders(map[string]string{
-			"Host":           "example.com",
-			"Content-Type":   "application/x-www-form-urlencoded",
-			"Content-Length": "13",
-		}),
+		Headers: Headers{
+			{"Host", "example.com"},
+			{"Content-Type", "application/x-www-form-urlencoded"},
+			{"Content-Length", "13"},
+		},
 	}
 
 	rd := NewRequestDecoder(strings.NewReader(rawRequest), DefaultDecodeOptions)
@@ -328,10 +317,10 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 			StatusCode:   200,
 			ReasonPhrase: "OK",
 		},
-		Headers: NewHeaders(map[string]string{
-			"Content-Type":   "text/plain",
-			"Content-Length": "13",
-		}),
+		Headers: Headers{
+			{"Content-Type", "text/plain"},
+			{"Content-Length", "13"},
+		},
 	}
 
 	rd := NewResponseDecoder(strings.NewReader(rawResponse), DefaultDecodeOptions)

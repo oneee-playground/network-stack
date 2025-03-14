@@ -45,11 +45,10 @@ func (me *MessageEncoder) writeLine(line []byte) error {
 func (me *MessageEncoder) encodeHeaders(headers Headers) error {
 	buf := bytes.NewBuffer(nil)
 
-	fields := headers.Fields()
-	for _, field := range fields {
-		buf.Write([]byte(field[0]))
+	for _, field := range headers {
+		buf.Write([]byte(field.Key))
 		buf.Write([]byte(": "))
-		buf.Write([]byte(field[1]))
+		buf.Write([]byte(field.Value))
 
 		if err := me.writeLine(buf.Bytes()); err != nil {
 			return errors.Wrap(err, "writing field")

@@ -71,9 +71,9 @@ func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 	}{
 		{
 			desc: "simple headers with CRLF",
-			headers: NewHeaders(map[string]string{
-				"Host": "example.com",
-			}),
+			headers: Headers{
+				{"Host", "example.com"},
+			},
 			expected: "" +
 				"Host: example.com\r\n" +
 				"\r\n",
@@ -124,9 +124,9 @@ func (s *RequestEncoderTestSuite) TestEncode() {
 			Target:  "/example",
 			Version: Version{1, 1},
 		},
-		Headers: NewHeaders(map[string]string{
-			"Host": "example.com",
-		}),
+		Headers: Headers{
+			{"Host", "example.com"},
+		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}
 
@@ -179,9 +179,9 @@ func (s *ResponseEncoderTestSuite) TestEncode() {
 			StatusCode:   200,
 			ReasonPhrase: "OK",
 		},
-		Headers: NewHeaders(map[string]string{
-			"Host": "example.com",
-		}),
+		Headers: Headers{
+			{"Host", "example.com"},
+		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}
 

@@ -6,7 +6,8 @@ import (
 	"io"
 	"strconv"
 
-	"network-stack/util"
+	"network-stack/application/util"
+	bytesutil "network-stack/util/bytes"
 
 	"github.com/pkg/errors"
 )
@@ -54,7 +55,7 @@ type MessageDecoder struct {
 var errLineTooLong = errors.New("line length exceeeds limit")
 
 func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
-	b, err := util.ReadUntil(md.br, []byte{LF})
+	b, err := bytesutil.ReadUntil(md.br, []byte{LF})
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +92,7 @@ func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 var ErrFieldLineTooLong = errors.New("field line length exceeds limit")
 
 func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
-	tmpHeaders := NewHeaders(nil)
+	tmpHeaders := make(Headers, 0)
 	for {
 		fieldLine, err := md.readLine(md.opts.MaxFieldLineLength)
 		if err != nil {
@@ -125,7 +126,7 @@ func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
 			value = bytes.Trim(value, string([]byte{c}))
 		}
 
-		tmpHeaders.Set(string(name), string(value))
+		tmpHeaders = append(tmpHeaders, Field{string(name), string(value)})
 	}
 
 	*headers = tmpHeaders
@@ -196,7 +197,7 @@ func parseRequestLine(line []byte) (requestLine, error) {
 	}
 
 	method := string(parts[0])
-	if !isValidToken(method) {
+	if !util.IsValidToken(method) {
 		return requestLine{}, errors.New("method is not a valid token")
 	}
 
