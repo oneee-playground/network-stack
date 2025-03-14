@@ -1,4 +1,4 @@
-package util
+package bytesutil
 
 import (
 	"bufio"
