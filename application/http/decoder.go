@@ -6,7 +6,7 @@ import (
 	"io"
 	"strconv"
 
-	"network-stack/application/util"
+	"network-stack/application/util/rule"
 	bytesutil "network-stack/util/bytes"
 
 	"github.com/pkg/errors"
@@ -55,7 +55,7 @@ type MessageDecoder struct {
 var errLineTooLong = errors.New("line length exceeeds limit")
 
 func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
-	b, err := bytesutil.ReadUntil(md.br, []byte{LF})
+	b, err := bytesutil.ReadUntil(md.br, []byte{rule.LF})
 	if err != nil {
 		return nil, err
 	}
@@ -68,23 +68,23 @@ func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 	b = b[:len(b)-1] // Remove LF.
 
 	if !md.opts.AllowSoleLF {
-		if len(b) == 0 || b[len(b)-1] != CR {
+		if len(b) == 0 || b[len(b)-1] != rule.CR {
 			return nil, errors.New("missing CR before LF")
 		}
 		b = b[:len(b)-1] // Remove CR.
 	}
 
 	if md.opts.LenientWhitespace {
-		for _, c := range whitespaces {
-			b = bytes.ReplaceAll(b, []byte{c}, []byte{SP})
+		for _, c := range rule.Whitespaces {
+			b = bytes.ReplaceAll(b, []byte{c}, []byte{rule.SP})
 		}
-		b = bytes.Trim(b, string([]byte{SP}))
+		b = bytes.Trim(b, string([]byte{rule.SP}))
 
 		return b, nil
 	}
 
 	// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-2.2-4
-	b = bytes.ReplaceAll(b, []byte{CR}, []byte{SP})
+	b = bytes.ReplaceAll(b, []byte{rule.CR}, []byte{rule.SP})
 
 	return b, nil
 }
@@ -115,14 +115,14 @@ func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
 		// No whitespace is allowed between field name and colon.
 		// An option for correcting it could be provided, but let's reject it for now.
 		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-2
-		for _, c := range OWS {
+		for _, c := range rule.OWS {
 			if bytes.HasSuffix(name, []byte{c}) {
 				return errors.New("field name has trailing whitespace")
 			}
 		}
 
 		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-3
-		for _, c := range OWS {
+		for _, c := range rule.OWS {
 			value = bytes.Trim(value, string([]byte{c}))
 		}
 
@@ -191,13 +191,13 @@ func (rd *RequestDecoder) decodeRequestLine(reqLine *requestLine) error {
 }
 
 func parseRequestLine(line []byte) (requestLine, error) {
-	parts := bytes.Split(line, []byte{SP})
+	parts := bytes.Split(line, []byte{rule.SP})
 	if len(parts) != 3 {
 		return requestLine{}, errors.New("request line is malformed")
 	}
 
 	method := string(parts[0])
-	if !util.IsValidToken(method) {
+	if !rule.IsValidToken(method) {
 		return requestLine{}, errors.New("method is not a valid token")
 	}
 
@@ -271,7 +271,7 @@ func (rd *ResponseDecoder) decodeStatusLine(statLine *statusLine) error {
 }
 
 func parseStatusLine(line []byte) (statusLine, error) {
-	parts := bytes.SplitN(line, []byte{SP}, 3)
+	parts := bytes.SplitN(line, []byte{rule.SP}, 3)
 	if len(parts) < 3 {
 		return statusLine{}, errors.New("status line is malformed")
 	}

@@ -3,6 +3,7 @@ package http
 import (
 	"bufio"
 	"io"
+	"network-stack/application/util/rule"
 	"strings"
 	"testing"
 
@@ -57,13 +58,13 @@ func (s *MessageDecoderTestSuite) TestReadLine() {
 		{
 			desc:     "line with lenient whitespace",
 			opts:     DecodeOptions{LenientWhitespace: true},
-			input:    "Hello" + string(whitespaces) + "World!" + "\r\n",
-			expected: "Hello" + strings.Repeat(" ", len(whitespaces)) + "World!",
+			input:    "Hello" + string(rule.Whitespaces) + "World!" + "\r\n",
+			expected: "Hello" + strings.Repeat(" ", len(rule.Whitespaces)) + "World!",
 		},
 		{
 			desc:     "lenient whitespace trimmed",
 			opts:     DecodeOptions{LenientWhitespace: true},
-			input:    string(whitespaces) + "Hey" + string(whitespaces) + "\r\n",
+			input:    string(rule.Whitespaces) + "Hey" + string(rule.Whitespaces) + "\r\n",
 			expected: "Hey",
 		},
 	}

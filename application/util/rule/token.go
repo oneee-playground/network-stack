@@ -1,4 +1,4 @@
-package util
+package rule
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2-2
 func IsValidToken(s string) bool {

@@ -6,6 +6,8 @@ import (
 	"io"
 	"strconv"
 
+	"network-stack/application/util/rule"
+
 	"github.com/pkg/errors"
 )
 
@@ -30,7 +32,7 @@ func (me *MessageEncoder) writeLine(line []byte) error {
 		return errors.Wrap(err, "writing line")
 	}
 
-	term := []byte{CR, LF}
+	term := []byte{rule.CR, rule.LF}
 	if me.opts.UseSoleLF {
 		term = term[1:]
 	}
@@ -104,9 +106,9 @@ func (re *RequestEncoder) encodeRequestLine(reqLine requestLine) error {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write([]byte(reqLine.Method))
-	buf.WriteByte(SP)
+	buf.WriteByte(rule.SP)
 	buf.Write([]byte(reqLine.Target))
-	buf.WriteByte(SP)
+	buf.WriteByte(rule.SP)
 	buf.Write(reqLine.Version.Text())
 
 	if err := re.writeLine(buf.Bytes()); err != nil {
@@ -157,9 +159,9 @@ func (re *ResponseEncoder) encodeStatusLine(statLine statusLine) error {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(statLine.Version.Text())
-	buf.WriteByte(SP)
+	buf.WriteByte(rule.SP)
 	buf.Write([]byte(strconv.Itoa(statLine.StatusCode)))
-	buf.WriteByte(SP)
+	buf.WriteByte(rule.SP)
 	buf.Write([]byte(statLine.ReasonPhrase))
 
 	if err := re.writeLine(buf.Bytes()); err != nil {

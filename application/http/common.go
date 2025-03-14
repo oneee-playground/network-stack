@@ -8,20 +8,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	CR   byte = '\r'
-	LF   byte = '\n'
-	SP   byte = ' '
-	HTAB byte = '	'
-	VT   byte = 0x0B
-	FF   byte = 0x0C
-)
-
-var (
-	OWS         = []byte{SP, HTAB}
-	whitespaces = []byte{SP, HTAB, VT, FF, CR}
-)
-
 // [Major, Minor]
 type Version [2]uint
 
