@@ -72,7 +72,7 @@ func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 		{
 			desc: "simple headers with CRLF",
 			headers: Headers{
-				{"Host", "example.com"},
+				{[]byte("Host"), []byte("example.com")},
 			},
 			expected: "" +
 				"Host: example.com\r\n" +
@@ -125,7 +125,7 @@ func (s *RequestEncoderTestSuite) TestEncode() {
 			Version: Version{1, 1},
 		},
 		Headers: Headers{
-			{"Host", "example.com"},
+			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}
@@ -180,7 +180,7 @@ func (s *ResponseEncoderTestSuite) TestEncode() {
 			ReasonPhrase: "OK",
 		},
 		Headers: Headers{
-			{"Host", "example.com"},
+			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}

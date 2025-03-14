@@ -102,8 +102,8 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Length: 123\r\n" +
 				"\r\n",
 			expected: Headers{
-				{"Content-Type", "text/html"},
-				{"Content-Length", "123"},
+				{[]byte("Content-Type"), []byte("text/html")},
+				{[]byte("Content-Length"), []byte("123")},
 			},
 		},
 		{
@@ -113,8 +113,8 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Length:   123\t\r\n" +
 				"\r\n",
 			expected: Headers{
-				{"Content-Type", "text/html"},
-				{"Content-Length", "123"},
+				{[]byte("Content-Type"), []byte("text/html")},
+				{[]byte("Content-Length"), []byte("123")},
 			},
 		},
 		{
@@ -124,8 +124,8 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Length: 123\r\n" +
 				"\r\n",
 			expected: Headers{
-				{"content type", "text/html"},
-				{"Content-Length", "123"},
+				{[]byte("content type"), []byte("text/html")},
+				{[]byte("Content-Length"), []byte("123")},
 			},
 		},
 		{
@@ -183,9 +183,9 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 			Version: Version{1, 1},
 		},
 		Headers: Headers{
-			{"Host", "example.com"},
-			{"Content-Type", "application/x-www-form-urlencoded"},
-			{"Content-Length", "13"},
+			{[]byte("Host"), []byte("example.com")},
+			{[]byte("Content-Type"), []byte("application/x-www-form-urlencoded")},
+			{[]byte("Content-Length"), []byte("13")},
 		},
 	}
 
@@ -319,8 +319,8 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 			ReasonPhrase: "OK",
 		},
 		Headers: Headers{
-			{"Content-Type", "text/plain"},
-			{"Content-Length", "13"},
+			{[]byte("Content-Type"), []byte("text/plain")},
+			{[]byte("Content-Length"), []byte("13")},
 		},
 	}
 

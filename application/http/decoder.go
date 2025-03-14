@@ -126,7 +126,7 @@ func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
 			value = bytes.Trim(value, string([]byte{c}))
 		}
 
-		tmpHeaders = append(tmpHeaders, Field{string(name), string(value)})
+		tmpHeaders = append(tmpHeaders, Field{name, value})
 	}
 
 	*headers = tmpHeaders

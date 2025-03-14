@@ -44,7 +44,7 @@ func (ver Version) Text() []byte {
 
 func (ver Version) String() string { return string(ver.Text()) }
 
-type Field struct{ Key, Value string }
+type Field struct{ Key, Value []byte }
 
 type Headers []Field
 
