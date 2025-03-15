@@ -14,9 +14,9 @@ var (
 	Whitespaces = []byte{SP, HTAB, VT, FF, CR}
 )
 
-func IsWhitespace(c byte) bool {
+func IsWhitespace(r rune) bool {
 	for _, ws := range Whitespaces {
-		if c == ws {
+		if r == rune(ws) {
 			return true
 		}
 	}

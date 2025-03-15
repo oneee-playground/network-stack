@@ -1,15 +1,17 @@
 package semantic
 
 import (
+	"network-stack/application/http"
+	"network-stack/application/util/rule"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewHeaders(t *testing.T) {
-	initial := map[string]string{
-		"Hello":     "world!",
-		"some-word": "A",
+	initial := map[string][]string{
+		"Hello":     {"world!"},
+		"some-word": {"A"},
 	}
 
 	headers := NewHeaders(initial)
@@ -17,23 +19,199 @@ func TestNewHeaders(t *testing.T) {
 	assert.Empty(t, headers.underlying["some-word"])
 	assert.Equal(t, "A", headers.underlying["Some-Word"])
 
-	initial["Hello"] = "there"
+	initial["Hello"] = []string{"there"}
 
 	assert.NotEqual(t, initial["Hello"], headers.underlying["Hello"])
 }
 
+func TestHeadersFrom(t *testing.T) {
+	testcases := []struct {
+		desc        string
+		input       []http.Field
+		mergeValues bool
+		expected    map[string][]string
+	}{
+		{
+			desc: "general case",
+			input: []http.Field{
+				{Key: []byte("Content-Type"), Value: []byte("Hey")},
+				{Key: []byte("Quoted"), Value: []byte("\"Hey\"")},
+				{Key: []byte("non-canonical"), Value: []byte("Hey")},
+				{Key: []byte("Multiple-Values"), Value: []byte("Hey, There")},
+			},
+			expected: map[string][]string{
+				"Content-Type":    {"Hey"},
+				"Quoted":          {"Hey"},
+				"Non-Canonical":   {"Hey"},
+				"Multiple-Values": {"Hey", "There"},
+			},
+		},
+		{
+			desc: "duplicate field name (overwritten)",
+			input: []http.Field{
+				{Key: []byte("Content-Type"), Value: []byte("Hey")},
+				{Key: []byte("Content-Type"), Value: []byte("Bye")},
+			},
+			mergeValues: false,
+			expected: map[string][]string{
+				"Content-Type": {"Bye"},
+			},
+		},
+		{
+			desc: "duplicate field name (merged)",
+			input: []http.Field{
+				{Key: []byte("Content-Type"), Value: []byte("Hey")},
+				{Key: []byte("Content-Type"), Value: []byte("Bye")},
+			},
+			mergeValues: true,
+			expected: map[string][]string{
+				"Content-Type": {"Hey", "Bye"},
+			},
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			headers := HeadersFrom(tc.input, tc.mergeValues)
+			assert.Equal(t, tc.expected, headers.underlying)
+		})
+	}
+}
+
 func TestHeaderFields(t *testing.T) {
-	hashmap := map[string]string{
-		"A": "a",
-		"B": "b",
+	hashmap := map[string][]string{
+		"A": {"a"},
+		"B": {"b"},
 	}
 
 	h := NewHeaders(hashmap)
 
 	fields := h.Fields()
 	assert.Len(t, fields, len(hashmap))
-	assert.Contains(t, fields, [2]string{"A", "a"})
-	assert.Contains(t, fields, [2]string{"B", "b"})
+	assert.Contains(t, fields, "A")
+	assert.Equal(t, []string{"a"}, fields["A"])
+	assert.Contains(t, fields, "B")
+	assert.Equal(t, []string{"b"}, fields["B"])
+}
+
+func TestHeaderToRawFields(t *testing.T) {
+	hashmap := map[string][]string{
+		"A": {"a"},
+		"B": {"b"},
+	}
+
+	h := NewHeaders(hashmap)
+
+	fields := h.ToRawFields()
+	assert.Len(t, fields, len(hashmap))
+	assert.Contains(t, fields, http.Field{Key: []byte("A"), Value: []byte("a")})
+	assert.Contains(t, fields, http.Field{Key: []byte("B"), Value: []byte("b")})
+}
+
+func TestHeaderGet(t *testing.T) {
+	h := NewHeaders(map[string][]string{
+		"abc": {"abc", "def"},
+		"ghi": {},
+	})
+
+	v, ok := h.Get("abc")
+	assert.True(t, ok)
+	assert.Equal(t, "abc", v)
+
+	v, ok = h.Get("ghi")
+	assert.False(t, ok)
+	assert.Empty(t, v)
+
+	v, ok = h.Get("jkl")
+	assert.False(t, ok)
+	assert.Empty(t, v)
+}
+
+func TestHeaderValues(t *testing.T) {
+	h := NewHeaders(map[string][]string{
+		"abc": {"abc", "def"},
+		"ghi": {},
+	})
+
+	v, ok := h.Values("abc")
+	assert.True(t, ok)
+	assert.Equal(t, []string{"abc", "def"}, v)
+
+	v, ok = h.Values("ghi")
+	assert.True(t, ok)
+	assert.Empty(t, v)
+
+	v, ok = h.Values("jkl")
+	assert.False(t, ok)
+	assert.Empty(t, v)
+}
+
+func TestHeaderSet(t *testing.T) {
+	h := NewHeaders(nil)
+
+	h.Set("key", "value")
+	v, ok := h.underlying["Key"]
+	assert.True(t, ok)
+	assert.Equal(t, []string{"value"}, v)
+
+	h.Set("key", "non-value")
+	v, ok = h.underlying["Key"]
+	assert.True(t, ok)
+	assert.Equal(t, []string{"non-value"}, v)
+}
+
+func TestHeaderAdd(t *testing.T) {
+	h := NewHeaders(nil)
+
+	h.Add("key", "value")
+	v, ok := h.underlying["Key"]
+	assert.True(t, ok)
+	assert.Equal(t, []string{"value"}, v)
+
+	h.Add("key", "non-value")
+	v, ok = h.underlying["Key"]
+	assert.True(t, ok)
+	assert.Equal(t, []string{"value", "non-value"}, v)
+}
+
+func TestShouldQuote(t *testing.T) {
+	assert.False(t, shouldQuote("hello"))
+	assert.True(t, shouldQuote(" hello"))
+	assert.True(t, shouldQuote("he,llo"))
+}
+
+func TestToRawFieldValues(t *testing.T) {
+	testcases := []struct {
+		desc     string
+		input    []string
+		expected []byte
+	}{
+		{
+			desc:     "single value",
+			input:    []string{"Hello"},
+			expected: []byte("Hello"),
+		},
+		{
+			desc:     "multiple values",
+			input:    []string{"Hello", "World"},
+			expected: []byte("Hello, World"),
+		},
+		{
+			desc:     "single value quoted",
+			input:    []string{"Hell llo!!"},
+			expected: []byte("\"Hell llo!!\""),
+		},
+		{
+			desc:     "multiple values quoted",
+			input:    []string{"Hell llo!!", ", itscomma"},
+			expected: []byte("\"Hell llo!!\", \", itscomma\""),
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			output := toRawFieldValues(tc.input)
+			assert.Equal(t, tc.expected, output)
+		})
+	}
 }
 
 func TestHeadersGetSet(t *testing.T) {
@@ -98,4 +276,101 @@ func TestToCanonicalFieldName(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+func TestTokenizeFieldValues(t *testing.T) {
+	testcases := []struct {
+		desc     string
+		input    []byte
+		expected []string
+	}{
+		{
+			desc:     "single value",
+			input:    []byte("hello world"),
+			expected: []string{"hello world"},
+		},
+		{
+			desc:     "multiple values with comma",
+			input:    []byte("foo, bar,baz"),
+			expected: []string{"foo", "bar", "baz"},
+		},
+		{
+			desc:     "quoted value",
+			input:    []byte("\"foo\""),
+			expected: []string{"foo"},
+		},
+		{
+			desc:     "quoted values with comma",
+			input:    []byte("\"foo\", \"bar\""),
+			expected: []string{"foo", "bar"},
+		},
+		{
+			desc:     "comma inside quoted string",
+			input:    []byte("foo \",bar\""),
+			expected: []string{"foo \",bar\""},
+		},
+		{
+			desc:     "escaped characters",
+			input:    []byte("\"foo is \\\"bar\\\"\""),
+			expected: []string{"foo is \"bar\""},
+		},
+		{
+			desc:     "empty values",
+			input:    []byte("foo, , , bar, "),
+			expected: []string{"foo", "bar"},
+		},
+		{
+			desc:     "malformed quote",
+			input:    []byte("\"foo, bar"),
+			expected: []string{"\"foo, bar"},
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			output := tokenizeFieldValues(tc.input)
+			assert.Equal(t, tc.expected, output)
+		})
+	}
+}
+
+func TestAddToken(t *testing.T) {
+	testcases := []struct {
+		desc     string
+		input    []byte
+		expected []string
+	}{
+		{
+			desc:     "empty token",
+			input:    []byte(""),
+			expected: []string{},
+		},
+		{
+			desc:     "only whitespaces",
+			input:    rule.Whitespaces,
+			expected: []string{},
+		},
+		{
+			desc:     "normal value",
+			input:    []byte("Hello"),
+			expected: []string{"Hello"},
+		},
+		{
+			desc:     "quoted value",
+			input:    []byte("\"Hello\""),
+			expected: []string{"Hello"},
+		},
+		{
+			desc:     "quoted value (not entirely wrapped)",
+			input:    []byte("He\"llo\""),
+			expected: []string{"He\"llo\""},
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			initial := []string{}
+			output := addToken(initial, tc.input)
+			assert.Equal(t, tc.expected, output)
+		})
+	}
+
 }
