@@ -11,6 +11,7 @@ const (
 
 var (
 	OWS         = []byte{SP, HTAB}
+	CRLF        = []byte{CR, LF}
 	Whitespaces = []byte{SP, HTAB, VT, FF, CR}
 )
 

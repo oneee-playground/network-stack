@@ -50,3 +50,38 @@ func TestIsValidToken(t *testing.T) {
 		})
 	}
 }
+
+func TestUnquote(t *testing.T) {
+	testcases := []struct {
+		desc     string
+		input    []byte
+		expected []byte
+	}{
+		{
+			desc:     "not quoted",
+			input:    []byte("Token"),
+			expected: []byte("Token"),
+		},
+		{
+			desc:     "quoted",
+			input:    []byte("\"Token\""),
+			expected: []byte("Token"),
+		},
+		{
+			desc:     "half-quoted",
+			input:    []byte("\"Token"),
+			expected: []byte("\"Token"),
+		},
+		{
+			desc:     "unescape",
+			input:    []byte("\"Tok\\\"en\""),
+			expected: []byte("Tok\"en"),
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			result := Unquote(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
