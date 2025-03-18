@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewHeaders(t *testing.T) {
@@ -17,7 +18,9 @@ func TestNewHeaders(t *testing.T) {
 	headers := NewHeaders(initial)
 
 	assert.Empty(t, headers.underlying["some-word"])
-	assert.Equal(t, "A", headers.underlying["Some-Word"])
+	values := headers.underlying["Some-Word"]
+	assert.Len(t, values, 1)
+	assert.Equal(t, "A", values[0])
 
 	initial["Hello"] = []string{"there"}
 
@@ -173,6 +176,20 @@ func TestHeaderAdd(t *testing.T) {
 	assert.Equal(t, []string{"value", "non-value"}, v)
 }
 
+func TestHeaderDel(t *testing.T) {
+	h := NewHeaders(nil)
+
+	h.Add("key", "value")
+	v, ok := h.underlying["Key"]
+	require.True(t, ok)
+	require.Equal(t, []string{"value"}, v)
+
+	h.Del("key")
+	v, ok = h.underlying["Key"]
+	assert.False(t, ok)
+	assert.Empty(t, v)
+}
+
 func TestShouldQuote(t *testing.T) {
 	assert.False(t, shouldQuote("hello"))
 	assert.True(t, shouldQuote(" hello"))
@@ -226,7 +243,9 @@ func TestHeadersGetSet(t *testing.T) {
 	h.Set(key, value)
 
 	assert.Empty(t, h.underlying[key])
-	assert.Equal(t, value, h.underlying[toCanonicalFieldName(key)])
+	values := h.underlying[toCanonicalFieldName(key)]
+	assert.Len(t, values, 1)
+	assert.Equal(t, value, values[0])
 
 	a, ok = h.Get(key)
 	assert.True(t, ok)

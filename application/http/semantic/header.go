@@ -75,7 +75,7 @@ func (h *Headers) ToRawFields() (fields []http.Field) {
 // Even if key has multiple values, it will only return the first element of values.
 // For list-based field, use [Headers.Values].
 func (h *Headers) Get(key string) (value string, ok bool) {
-	v, ok := h.underlying[toCanonicalFieldName(key)]
+	v, ok := h.underlying[h.canonical(key)]
 	if !ok || len(v) == 0 {
 		return "", false
 	}
@@ -83,7 +83,7 @@ func (h *Headers) Get(key string) (value string, ok bool) {
 }
 
 func (h *Headers) Values(key string) (values []string, ok bool) {
-	values, ok = h.underlying[toCanonicalFieldName(key)]
+	values, ok = h.underlying[h.canonical(key)]
 	return
 }
 
@@ -91,17 +91,23 @@ func (h *Headers) Values(key string) (values []string, ok bool) {
 // It overwrites existing value instead of appending to it.
 // For list-based field, use [Headers.Add].
 func (h *Headers) Set(key, value string) {
-	if rule.IsValidToken(key) {
-		key = toCanonicalFieldName(key)
-	}
-	h.underlying[key] = []string{value}
+	h.underlying[h.canonical(key)] = []string{value}
 }
 
 func (h *Headers) Add(key, value string) {
-	if rule.IsValidToken(key) {
-		key = toCanonicalFieldName(key)
-	}
+	key = h.canonical(key)
 	h.underlying[key] = append(h.underlying[key], value)
+}
+
+func (h *Headers) Del(key string) {
+	delete(h.underlying, h.canonical(key))
+}
+
+func (h *Headers) canonical(s string) string {
+	if rule.IsValidToken(s) {
+		s = toCanonicalFieldName(s)
+	}
+	return s
 }
 
 // This only works for valid token.
@@ -150,6 +156,8 @@ func tokenizeFieldValues(fieldValue []byte) []string {
 	buf := bytes.NewBuffer(nil)
 
 	parts := bytes.Split(fieldValue, []byte{','})
+
+	// Reference: https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.4-1
 	quoted := false
 
 	for _, part := range parts {
