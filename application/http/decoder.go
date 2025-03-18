@@ -91,8 +91,8 @@ func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 
 var ErrFieldLineTooLong = errors.New("field line length exceeds limit")
 
-func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
-	tmpHeaders := make(Headers, 0)
+func (md *MessageDecoder) decodeHeaders(headers *[]Field) error {
+	tmpHeaders := make([]Field, 0)
 	for {
 		fieldLine, err := md.readLine(md.opts.MaxFieldLineLength)
 		if err != nil {
@@ -107,26 +107,12 @@ func (md *MessageDecoder) decodeHeaders(headers *Headers) error {
 			break
 		}
 
-		name, value, found := bytes.Cut(fieldLine, []byte{':'})
-		if !found {
-			return errors.Errorf("colon seperator not found on header: %q", string(fieldLine))
+		field, err := ParseField(fieldLine)
+		if err != nil {
+			return errors.Wrap(err, "parsing field line")
 		}
 
-		// No whitespace is allowed between field name and colon.
-		// An option for correcting it could be provided, but let's reject it for now.
-		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-2
-		for _, c := range rule.OWS {
-			if bytes.HasSuffix(name, []byte{c}) {
-				return errors.New("field name has trailing whitespace")
-			}
-		}
-
-		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-3
-		for _, c := range rule.OWS {
-			value = bytes.Trim(value, string([]byte{c}))
-		}
-
-		tmpHeaders = append(tmpHeaders, Field{name, value})
+		tmpHeaders = append(tmpHeaders, field)
 	}
 
 	*headers = tmpHeaders

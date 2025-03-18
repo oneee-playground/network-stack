@@ -92,7 +92,7 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 		desc     string
 		opts     DecodeOptions
 		input    string
-		expected Headers
+		expected []Field
 		wantErr  bool
 	}{
 		{
@@ -101,30 +101,8 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				"Content-Type: text/html\r\n" +
 				"Content-Length: 123\r\n" +
 				"\r\n",
-			expected: Headers{
+			expected: []Field{
 				{[]byte("Content-Type"), []byte("text/html")},
-				{[]byte("Content-Length"), []byte("123")},
-			},
-		},
-		{
-			desc: "headers with leading and trailing whitespace",
-			input: "" +
-				"Content-Type:   text/html  \r\n" +
-				"Content-Length:   123\t\r\n" +
-				"\r\n",
-			expected: Headers{
-				{[]byte("Content-Type"), []byte("text/html")},
-				{[]byte("Content-Length"), []byte("123")},
-			},
-		},
-		{
-			desc: "field name is not a valid token",
-			input: "" +
-				"content type: text/html\r\n" +
-				"Content-Length: 123\r\n" +
-				"\r\n",
-			expected: Headers{
-				{[]byte("content type"), []byte("text/html")},
 				{[]byte("Content-Length"), []byte("123")},
 			},
 		},
@@ -144,7 +122,7 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 				opts: tc.opts,
 			}
 
-			h := Headers{}
+			h := []Field{}
 			err := d.decodeHeaders(&h)
 			if tc.wantErr {
 				s.Error(err)
@@ -182,7 +160,7 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 			Target:  "/example",
 			Version: Version{1, 1},
 		},
-		Headers: Headers{
+		Headers: []Field{
 			{[]byte("Host"), []byte("example.com")},
 			{[]byte("Content-Type"), []byte("application/x-www-form-urlencoded")},
 			{[]byte("Content-Length"), []byte("13")},
@@ -318,7 +296,7 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 			StatusCode:   200,
 			ReasonPhrase: "OK",
 		},
-		Headers: Headers{
+		Headers: []Field{
 			{[]byte("Content-Type"), []byte("text/plain")},
 			{[]byte("Content-Length"), []byte("13")},
 		},

@@ -32,7 +32,7 @@ func (me *MessageEncoder) writeLine(line []byte) error {
 		return errors.Wrap(err, "writing line")
 	}
 
-	term := []byte{rule.CR, rule.LF}
+	term := rule.CRLF
 	if me.opts.UseSoleLF {
 		term = term[1:]
 	}
@@ -44,18 +44,11 @@ func (me *MessageEncoder) writeLine(line []byte) error {
 	return nil
 }
 
-func (me *MessageEncoder) encodeHeaders(headers Headers) error {
-	buf := bytes.NewBuffer(nil)
-
+func (me *MessageEncoder) encodeHeaders(headers []Field) error {
 	for _, field := range headers {
-		buf.Write([]byte(field.Key))
-		buf.Write([]byte(": "))
-		buf.Write([]byte(field.Value))
-
-		if err := me.writeLine(buf.Bytes()); err != nil {
+		if err := me.writeLine(field.Text()); err != nil {
 			return errors.Wrap(err, "writing field")
 		}
-		buf.Reset()
 	}
 
 	// Write a empty line as all the headers are written.

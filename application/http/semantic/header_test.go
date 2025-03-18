@@ -37,10 +37,10 @@ func TestHeadersFrom(t *testing.T) {
 		{
 			desc: "general case",
 			input: []http.Field{
-				{Key: []byte("Content-Type"), Value: []byte("Hey")},
-				{Key: []byte("Quoted"), Value: []byte("\"Hey\"")},
-				{Key: []byte("non-canonical"), Value: []byte("Hey")},
-				{Key: []byte("Multiple-Values"), Value: []byte("Hey, There")},
+				{Name: []byte("Content-Type"), Value: []byte("Hey")},
+				{Name: []byte("Quoted"), Value: []byte("\"Hey\"")},
+				{Name: []byte("non-canonical"), Value: []byte("Hey")},
+				{Name: []byte("Multiple-Values"), Value: []byte("Hey, There")},
 			},
 			expected: map[string][]string{
 				"Content-Type":    {"Hey"},
@@ -52,8 +52,8 @@ func TestHeadersFrom(t *testing.T) {
 		{
 			desc: "duplicate field name (overwritten)",
 			input: []http.Field{
-				{Key: []byte("Content-Type"), Value: []byte("Hey")},
-				{Key: []byte("Content-Type"), Value: []byte("Bye")},
+				{Name: []byte("Content-Type"), Value: []byte("Hey")},
+				{Name: []byte("Content-Type"), Value: []byte("Bye")},
 			},
 			mergeValues: false,
 			expected: map[string][]string{
@@ -63,8 +63,8 @@ func TestHeadersFrom(t *testing.T) {
 		{
 			desc: "duplicate field name (merged)",
 			input: []http.Field{
-				{Key: []byte("Content-Type"), Value: []byte("Hey")},
-				{Key: []byte("Content-Type"), Value: []byte("Bye")},
+				{Name: []byte("Content-Type"), Value: []byte("Hey")},
+				{Name: []byte("Content-Type"), Value: []byte("Bye")},
 			},
 			mergeValues: true,
 			expected: map[string][]string{
@@ -106,8 +106,8 @@ func TestHeaderToRawFields(t *testing.T) {
 
 	fields := h.ToRawFields()
 	assert.Len(t, fields, len(hashmap))
-	assert.Contains(t, fields, http.Field{Key: []byte("A"), Value: []byte("a")})
-	assert.Contains(t, fields, http.Field{Key: []byte("B"), Value: []byte("b")})
+	assert.Contains(t, fields, http.Field{Name: []byte("A"), Value: []byte("a")})
+	assert.Contains(t, fields, http.Field{Name: []byte("B"), Value: []byte("b")})
 }
 
 func TestHeaderGet(t *testing.T) {

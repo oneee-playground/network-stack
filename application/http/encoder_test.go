@@ -64,14 +64,14 @@ func (s *MessageEncoderTestSuite) TestWriteLine() {
 func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 	testcases := []struct {
 		desc     string
-		headers  Headers
+		headers []Field
 		opts     EncodeOptions
 		expected string
 		wantErr  bool
 	}{
 		{
 			desc: "simple headers with CRLF",
-			headers: Headers{
+			headers:[]Field{
 				{[]byte("Host"), []byte("example.com")},
 			},
 			expected: "" +
@@ -80,7 +80,7 @@ func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 		},
 		{
 			desc:     "empty headers",
-			headers:  Headers{},
+			headers: []Field{},
 			expected: "\r\n",
 		},
 	}
@@ -124,7 +124,7 @@ func (s *RequestEncoderTestSuite) TestEncode() {
 			Target:  "/example",
 			Version: Version{1, 1},
 		},
-		Headers: Headers{
+		Headers:[]Field{
 			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
@@ -179,7 +179,7 @@ func (s *ResponseEncoderTestSuite) TestEncode() {
 			StatusCode:   200,
 			ReasonPhrase: "OK",
 		},
-		Headers: Headers{
+		Headers:[]Field{
 			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),

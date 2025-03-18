@@ -31,7 +31,7 @@ func NewHeaders(initial map[string][]string) Headers {
 func HeadersFrom(fields []http.Field, mergeValues bool) Headers {
 	clone := make(map[string][]string, len(fields))
 	for _, field := range fields {
-		key := string(field.Key)
+		key := string(field.Name)
 		if rule.IsValidToken(key) {
 			key = toCanonicalFieldName(key)
 		}
@@ -65,7 +65,7 @@ func (h *Headers) ToRawFields() (fields []http.Field) {
 	fields = make([]http.Field, 0, len(h.underlying))
 	for k, v := range h.Fields() {
 		key, value := []byte(k), toRawFieldValues(v)
-		fields = append(fields, http.Field{Key: key, Value: value})
+		fields = append(fields, http.Field{Name: key, Value: value})
 	}
 
 	return fields
@@ -171,13 +171,6 @@ func tokenizeFieldValues(fieldValue []byte) []string {
 			if c == '"' {
 				quoted = !quoted
 			}
-			if c == '\\' && quoted && idx < len(part)-1 {
-				// Escaped character inside quote.
-				// Unescape it and write it away.
-				idx++
-				buf.WriteByte(part[idx])
-				continue
-			}
 
 			buf.WriteByte(c)
 		}
@@ -199,13 +192,7 @@ func tokenizeFieldValues(fieldValue []byte) []string {
 
 func addToken(tokens []string, token []byte) []string {
 	token = bytes.TrimFunc(token, rule.IsWhitespace)
-	if len(token) >= 2 {
-		// Unquote the token if it's wrapped with quotes.
-		first, last := 0, len(token)-1
-		if token[first] == '"' && token[last] == '"' {
-			token = token[first+1 : last]
-		}
-	}
+	token = rule.Unquote(token)
 	if len(token) == 0 {
 		// Don't append if it's empty.
 		return tokens

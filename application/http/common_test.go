@@ -99,3 +99,54 @@ func TestVersionToText(t *testing.T) {
 		})
 	}
 }
+
+func TestParseField(t *testing.T) {
+	testcases := []struct {
+		desc     string
+		input    []byte
+		expected Field
+		wantErr  bool
+	}{
+		{
+			desc:     "headers with leading and trailing whitespace",
+			input:    []byte("Content-Type:   text/html\t  "),
+			expected: Field{[]byte("Content-Type"), []byte("text/html")},
+		},
+		{
+			desc:     "field name is not a valid token",
+			input:    []byte("content type: text/html"),
+			expected: Field{[]byte("content type"), []byte("text/html")},
+		},
+		{
+			desc:    "no colon seperator",
+			input:   []byte("content type text/html"),
+			wantErr: true,
+		},
+		{
+			desc:    "trailing whitespace on field name",
+			input:   []byte("Content-Type : text/html"),
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			field, err := ParseField(tc.input)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, field)
+		})
+	}
+
+}
+
+func TestFieldToText(t *testing.T) {
+	field := Field{[]byte("Host"), []byte("example.com")}
+	expected := "Host: example.com"
+
+	assert.Equal(t, expected, string(field.Text()))
+}

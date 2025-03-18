@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"io"
+	"network-stack/application/util/rule"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -44,9 +45,38 @@ func (ver Version) Text() []byte {
 
 func (ver Version) String() string { return string(ver.Text()) }
 
-type Field struct{ Key, Value []byte }
+type Field struct{ Name, Value []byte }
 
-type Headers []Field
+func ParseField(fieldLine []byte) (Field, error) {
+	name, value, found := bytes.Cut(fieldLine, []byte{':'})
+	if !found {
+		return Field{}, errors.Errorf("colon seperator not found on header: %q", string(fieldLine))
+	}
+
+	// No whitespace is allowed between field name and colon.
+	// An option for correcting it could be provided, but let's reject it for now.
+	// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-2
+	for _, c := range rule.OWS {
+		if bytes.HasSuffix(name, []byte{c}) {
+			return Field{}, errors.New("field name has trailing whitespace")
+		}
+	}
+
+	// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-5.1-3
+	for _, c := range rule.OWS {
+		value = bytes.Trim(value, string([]byte{c}))
+	}
+
+	return Field{Name: name, Value: value}, nil
+}
+
+func (f *Field) Text() []byte {
+	buf := bytes.NewBuffer(nil)
+	buf.Write(f.Name)
+	buf.Write([]byte(": "))
+	buf.Write(f.Value)
+	return buf.Bytes()
+}
 
 type requestLine struct {
 	Method  string
@@ -56,7 +86,7 @@ type requestLine struct {
 
 type Request struct {
 	requestLine
-	Headers Headers
+	Headers []Field
 
 	Body io.ReadCloser
 }
@@ -69,6 +99,6 @@ type statusLine struct {
 
 type Response struct {
 	statusLine
-	Headers Headers
+	Headers []Field
 	Body    io.ReadCloser
 }
