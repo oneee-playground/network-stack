@@ -268,7 +268,7 @@ func parseStatusLine(line []byte) (statusLine, error) {
 	}
 
 	statusCodeStr := string(parts[1])
-	statusCode, err := strconv.Atoi(statusCodeStr)
+	statusCode, err := strconv.ParseUint(statusCodeStr, 10, 64)
 	if err != nil || len(statusCodeStr) != 3 {
 		return statusLine{}, errors.Errorf("status code is malformed: %q", statusCodeStr)
 	}
@@ -276,5 +276,5 @@ func parseStatusLine(line []byte) (statusLine, error) {
 	// reason-phrase is optional.
 	reasonPhrase := string(parts[2])
 
-	return statusLine{Version: ver, StatusCode: statusCode, ReasonPhrase: reasonPhrase}, nil
+	return statusLine{Version: ver, StatusCode: uint(statusCode), ReasonPhrase: reasonPhrase}, nil
 }

@@ -153,7 +153,7 @@ func (re *ResponseEncoder) encodeStatusLine(statLine statusLine) error {
 
 	buf.Write(statLine.Version.Text())
 	buf.WriteByte(rule.SP)
-	buf.Write([]byte(strconv.Itoa(statLine.StatusCode)))
+	buf.Write([]byte(strconv.FormatUint(uint64(statLine.StatusCode), 10)))
 	buf.WriteByte(rule.SP)
 	buf.Write([]byte(statLine.ReasonPhrase))
 

@@ -93,7 +93,7 @@ type Request struct {
 
 type statusLine struct {
 	Version      Version
-	StatusCode   int
+	StatusCode   uint
 	ReasonPhrase string
 }
 
