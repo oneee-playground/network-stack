@@ -2,6 +2,7 @@ package http
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"network-stack/application/util/rule"
 	"strings"
@@ -26,7 +27,7 @@ func (s *MessageDecoderTestSuite) TestReadLine() {
 		limit    uint
 		input    string
 		expected string
-		wantErr  bool
+		wantErr  error
 	}{
 		{
 			desc:     "simple line with CRLF",
@@ -37,12 +38,12 @@ func (s *MessageDecoderTestSuite) TestReadLine() {
 			desc:    "line exceeding limit",
 			input:   "Hey\r\n",
 			limit:   1,
-			wantErr: true,
+			wantErr: errLineTooLong,
 		},
 		{
 			desc:    "Sole LF (fail)",
 			input:   "Hello\n",
-			wantErr: true,
+			wantErr: ErrMissingCRBeforeLF,
 		},
 		{
 			desc:     "Sole LF (success)",
@@ -76,8 +77,8 @@ func (s *MessageDecoderTestSuite) TestReadLine() {
 			}
 
 			b, err := d.readLine(tc.limit)
-			if tc.wantErr {
-				s.Error(err)
+			if tc.wantErr != nil {
+				s.ErrorIs(err, tc.wantErr)
 				return
 			}
 
@@ -93,7 +94,7 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 		opts     DecodeOptions
 		input    string
 		expected []Field
-		wantErr  bool
+		wantErr  error
 	}{
 		{
 			desc: "simple headers",
@@ -112,7 +113,12 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 			input: "" +
 				"Content-Type: text/html\r\n" +
 				"\r\n",
-			wantErr: true,
+			wantErr: ErrFieldLineTooLong,
+		},
+		{
+			desc:    "malformed headers",
+			input:   "Content-Type text/html\r\n",
+			wantErr: ErrMalformedFieldLine,
 		},
 	}
 	for _, tc := range testcases {
@@ -124,8 +130,8 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 
 			h := []Field{}
 			err := d.decodeHeaders(&h)
-			if tc.wantErr {
-				s.Error(err)
+			if tc.wantErr != nil {
+				s.ErrorIs(err, tc.wantErr)
 				return
 			}
 
@@ -186,22 +192,59 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 }
 
 func (s *RequestDecoderTestSuite) TestDecodeRequestLine() {
-	rawReqLine := "" +
-		"\r\n" + // leading empty lines.
-		"\r\n" +
-		"GET /abc HTTP/1.1\r\n"
+	testcases := []struct {
+		desc     string
+		input    []byte
+		opts     DecodeOptions
+		expected requestLine
+		wantErr  error
+	}{
+		{
+			desc: "example",
+			input: []byte("" +
+				"\r\n" + // leading empty lines.
+				"\r\n" +
+				"GET /abc HTTP/1.1\r\n",
+			),
+			expected: requestLine{
+				Method:  "GET",
+				Target:  "/abc",
+				Version: Version{1, 1},
+			},
+		},
+		{
+			desc: "malformed request line",
+			input: []byte("" +
+				"GET  /abc HTTP/1.1\r\n",
+			),
+			wantErr: ErrMalformedRequestLine,
+		},
+		{
+			desc: "length limit exceeded",
+			input: []byte("" +
+				"GETTTTTTTTTTTTTTTTTTTTTTTTTT /abc HTTP/1.1\r\n",
+			),
+			opts:    DecodeOptions{MaxRequestLineLength: 20},
+			wantErr: ErrRequestLineTooLong,
+		},
+	}
 
-	rd := NewRequestDecoder(strings.NewReader(rawReqLine), DefaultDecodeOptions)
+	for _, tc := range testcases {
+		s.Run(tc.desc, func() {
+			rd := NewRequestDecoder(bytes.NewReader(tc.input), tc.opts)
 
-	var reqLine requestLine
-	err := rd.decodeRequestLine(&reqLine)
+			var reqLine requestLine
+			err := rd.decodeRequestLine(&reqLine)
+			if tc.wantErr != nil {
+				s.ErrorIs(err, tc.wantErr)
+				return
+			}
 
-	s.NoError(err)
-	s.Equal(requestLine{
-		Method:  "GET",
-		Target:  "/abc",
-		Version: Version{1, 1},
-	}, reqLine)
+			s.NoError(err)
+			s.Equal(tc.expected, reqLine)
+		})
+	}
+
 }
 
 func TestParseRequestLine(t *testing.T) {
@@ -321,22 +364,57 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 }
 
 func (s *ResponseDecoderTestSuite) TestDecodeStatusLine() {
-	rawStatLine := "" +
-		"\r\n" + // leading empty lines.
-		"\r\n" +
-		"HTTP/1.1 200 OK\r\n"
+	testcases := []struct {
+		desc     string
+		input    []byte
+		opts     DecodeOptions
+		expected statusLine
+		wantErr  error
+	}{
+		{
+			desc: "example",
+			input: []byte("" +
+				"\r\n" + // leading empty lines.
+				"\r\n" +
+				"HTTP/1.1 200 OK\r\n"),
+			expected: statusLine{
+				Version:      Version{1, 1},
+				StatusCode:   200,
+				ReasonPhrase: "OK",
+			},
+		},
+		{
+			desc: "malformed status line",
+			input: []byte("" +
+				"HTTP/1.1 2000 Not OK\r\n",
+			),
+			wantErr: ErrMalformedStatusLine,
+		},
+		{
+			desc: "length limit exceeded",
+			input: []byte("" +
+				"HTTP/1.1 200 Nottttttttttt OK\r\n",
+			),
+			opts:    DecodeOptions{MaxStatusLineLength: 20},
+			wantErr: ErrStatusLineTooLong,
+		},
+	}
 
-	rd := NewResponseDecoder(strings.NewReader(rawStatLine), DefaultDecodeOptions)
+	for _, tc := range testcases {
+		s.Run(tc.desc, func() {
+			rd := NewResponseDecoder(bytes.NewReader(tc.input), tc.opts)
 
-	var statLine statusLine
-	err := rd.decodeStatusLine(&statLine)
+			var statLine statusLine
+			err := rd.decodeStatusLine(&statLine)
+			if tc.wantErr != nil {
+				s.ErrorIs(err, tc.wantErr)
+				return
+			}
 
-	s.NoError(err)
-	s.Equal(statusLine{
-		Version:      Version{1, 1},
-		StatusCode:   200,
-		ReasonPhrase: "OK",
-	}, statLine)
+			s.NoError(err)
+			s.Equal(tc.expected, statLine)
+		})
+	}
 }
 
 func TestParseStatusLine(t *testing.T) {

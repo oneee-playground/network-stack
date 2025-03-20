@@ -52,7 +52,10 @@ type MessageDecoder struct {
 	opts DecodeOptions
 }
 
-var errLineTooLong = errors.New("line length exceeeds limit")
+var (
+	errLineTooLong       = errors.New("line length exceeeds limit")
+	ErrMissingCRBeforeLF = errors.New("missing CR before LF")
+)
 
 func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 	b, err := bytesutil.ReadUntil(md.br, []byte{rule.LF})
@@ -69,7 +72,7 @@ func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 
 	if !md.opts.AllowSoleLF {
 		if len(b) == 0 || b[len(b)-1] != rule.CR {
-			return nil, errors.New("missing CR before LF")
+			return nil, ErrMissingCRBeforeLF
 		}
 		b = b[:len(b)-1] // Remove CR.
 	}
@@ -89,7 +92,10 @@ func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
 	return b, nil
 }
 
-var ErrFieldLineTooLong = errors.New("field line length exceeds limit")
+var (
+	ErrFieldLineTooLong   = errors.New("field line length exceeds limit")
+	ErrMalformedFieldLine = errors.New("field line is malformed")
+)
 
 func (md *MessageDecoder) decodeHeaders(headers *[]Field) error {
 	tmpHeaders := make([]Field, 0)
@@ -109,7 +115,7 @@ func (md *MessageDecoder) decodeHeaders(headers *[]Field) error {
 
 		field, err := ParseField(fieldLine)
 		if err != nil {
-			return errors.Wrap(err, "parsing field line")
+			return ErrMalformedFieldLine
 		}
 
 		tmpHeaders = append(tmpHeaders, field)
@@ -121,7 +127,8 @@ func (md *MessageDecoder) decodeHeaders(headers *[]Field) error {
 }
 
 var (
-	ErrRequestLineTooLong = errors.New("request line length exceeds limit")
+	ErrRequestLineTooLong   = errors.New("request line length exceeds limit")
+	ErrMalformedRequestLine = errors.New("request line is malformed")
 )
 
 type RequestDecoder struct{ MessageDecoder }
@@ -168,7 +175,7 @@ func (rd *RequestDecoder) decodeRequestLine(reqLine *requestLine) error {
 
 	parsed, err := parseRequestLine(line)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse the line: %q", string(line))
+		return ErrMalformedRequestLine
 	}
 
 	*reqLine = parsed
@@ -201,7 +208,8 @@ func parseRequestLine(line []byte) (requestLine, error) {
 }
 
 var (
-	ErrStatusLineTooLong = errors.New("status line length exceeds limit")
+	ErrStatusLineTooLong   = errors.New("status line length exceeds limit")
+	ErrMalformedStatusLine = errors.New("status line is malformed")
 )
 
 type ResponseDecoder struct{ MessageDecoder }
@@ -248,7 +256,7 @@ func (rd *ResponseDecoder) decodeStatusLine(statLine *statusLine) error {
 
 	parsed, err := parseStatusLine(line)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse the line: %q", string(line))
+		return ErrMalformedStatusLine
 	}
 
 	*statLine = parsed
