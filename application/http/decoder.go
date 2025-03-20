@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"network-stack/application/util/rule"
-	bytesutil "network-stack/util/bytes"
+	byteslib "network-stack/lib/bytes"
 
 	"github.com/pkg/errors"
 )
@@ -58,7 +58,7 @@ var (
 )
 
 func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
-	b, err := bytesutil.ReadUntil(md.br, []byte{rule.LF})
+	b, err := byteslib.ReadUntil(md.br, []byte{rule.LF})
 	if err != nil {
 		return nil, err
 	}

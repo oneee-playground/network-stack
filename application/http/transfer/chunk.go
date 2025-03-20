@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"network-stack/application/http"
 	"network-stack/application/util/rule"
-	bytesutil "network-stack/util/bytes"
+	byteslib "network-stack/lib/bytes"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -285,7 +285,7 @@ func (cw *ChunkedWriter) encodeTrailers() error {
 
 // readLine reads until CRLF and cuts it.
 func readLine(br *bufio.Reader) (line []byte, err error) {
-	line, err = bytesutil.ReadUntil(br, rule.CRLF)
+	line, err = byteslib.ReadUntil(br, rule.CRLF)
 	if err != nil {
 		return nil, err
 	}

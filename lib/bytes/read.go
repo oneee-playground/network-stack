@@ -1,4 +1,4 @@
-package bytesutil
+package byteslib
 
 import (
 	"bufio"
