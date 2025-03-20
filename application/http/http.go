@@ -9,6 +9,31 @@ import (
 	"github.com/pkg/errors"
 )
 
+type requestLine struct {
+	Method  string
+	Target  string
+	Version Version
+}
+
+type Request struct {
+	requestLine
+	Headers []Field
+
+	Body io.ReadCloser
+}
+
+type statusLine struct {
+	Version      Version
+	StatusCode   uint
+	ReasonPhrase string
+}
+
+type Response struct {
+	statusLine
+	Headers []Field
+	Body    io.ReadCloser
+}
+
 // [Major, Minor]
 type Version [2]uint
 
@@ -76,29 +101,4 @@ func (f *Field) Text() []byte {
 	buf.Write([]byte(": "))
 	buf.Write(f.Value)
 	return buf.Bytes()
-}
-
-type requestLine struct {
-	Method  string
-	Target  string
-	Version Version
-}
-
-type Request struct {
-	requestLine
-	Headers []Field
-
-	Body io.ReadCloser
-}
-
-type statusLine struct {
-	Version      Version
-	StatusCode   uint
-	ReasonPhrase string
-}
-
-type Response struct {
-	statusLine
-	Headers []Field
-	Body    io.ReadCloser
 }
