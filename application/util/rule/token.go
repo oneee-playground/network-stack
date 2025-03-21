@@ -1,6 +1,8 @@
 package rule
 
-import "bytes"
+import (
+	"bytes"
+)
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2-2
 func IsValidToken(s string) bool {
@@ -8,12 +10,7 @@ func IsValidToken(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		// ALPHA
-		if ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') {
-			continue
-		}
-		// DIGIT
-		if '0' <= c && c <= '9' {
+		if IsAlpha(c) || IsDigit(c) {
 			continue
 		}
 
