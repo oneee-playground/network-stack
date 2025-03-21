@@ -9,6 +9,14 @@ import (
 
 type Addr [4]byte
 
+func (a Addr) ToUint32() (n uint32) {
+	n |= uint32(a[0]) << 24
+	n |= uint32(a[1]) << 16
+	n |= uint32(a[2]) << 8
+	n |= uint32(a[3])
+	return
+}
+
 func ParseAddr(s string) (Addr, error) {
 	digits := strings.Split(s, ".")
 	if len(digits) != 4 {

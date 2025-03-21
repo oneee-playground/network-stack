@@ -65,3 +65,9 @@ func TestParseAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestAddrToUint32(t *testing.T) {
+	addr := Addr{0xFF, 0xEE, 0x00, 0x22}
+	expected := uint32(0xFFEE0022)
+	assert.Equal(t, expected, addr.ToUint32())
+}
