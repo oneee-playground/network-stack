@@ -57,6 +57,7 @@ func (u *URI) IsValid() error {
 	return nil
 }
 
+// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-5.3
 func (u *URI) String() string {
 	b := new(strings.Builder)
 	if u.Scheme != "" {
