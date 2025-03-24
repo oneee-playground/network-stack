@@ -10,6 +10,163 @@ func newp[T any](n T) *T {
 	return &n
 }
 
+var examplePairs []struct {
+	desc string
+	raw  string
+	uri  URI
+} = []struct {
+	desc string
+	raw  string
+	uri  URI
+}{
+	{
+		raw: "ftp://ftp.is.co.za/rfc/rfc1808.txt",
+		uri: URI{
+			Scheme: "ftp",
+			Authority: &Authority{
+				Host: "ftp.is.co.za",
+			},
+			Path: "/rfc/rfc1808.txt",
+		},
+	},
+	{
+		raw: "http://www.ietf.org/rfc/rfc2396.txt",
+		uri: URI{
+			Scheme: "http",
+			Authority: &Authority{
+				Host: "www.ietf.org",
+			},
+			Path: "/rfc/rfc2396.txt",
+		},
+	},
+	{
+		raw: "ldap://[2001:db8::7]/c=GB?objectClass?one",
+		uri: URI{
+			Scheme: "ldap",
+			Authority: &Authority{
+				Host: "[2001:db8::7]",
+			},
+			Path:  "/c=GB",
+			Query: newp("objectClass?one"),
+		},
+	},
+	{
+		raw: "mailto:John.Doe@example.com",
+		uri: URI{
+			Scheme: "mailto",
+			Path:   "John.Doe@example.com",
+		},
+	},
+	{
+		raw: "news:comp.infosystems.www.servers.unix",
+		uri: URI{
+			Scheme: "news",
+			Path:   "comp.infosystems.www.servers.unix",
+		},
+	},
+	{
+		raw: "tel:+1-816-555-1212",
+		uri: URI{
+			Scheme: "tel",
+			Path:   "+1-816-555-1212",
+		},
+	},
+	{
+		raw: "telnet://192.0.2.16:80/",
+		uri: URI{
+			Scheme: "telnet",
+			Authority: &Authority{
+				Host: "192.0.2.16",
+				Port: newp(uint16(80)),
+			},
+			Path: "/",
+		},
+	},
+	{
+		raw: "urn:oasis:names:specification:docbook:dtd:xml:4.1.2",
+		uri: URI{
+			Scheme: "urn",
+			Path:   "oasis:names:specification:docbook:dtd:xml:4.1.2",
+		},
+	},
+	{
+		desc: "relative reference (network-path)",
+		raw:  "//localhost/",
+		uri: URI{
+			Authority: &Authority{
+				Host: "localhost",
+			},
+			Path: "/",
+		},
+	},
+	{
+		desc: "relative reference (absolute)",
+		raw:  "path/relative/ref",
+		uri: URI{
+			Path: "path/relative/ref",
+		},
+	},
+	{
+		desc: "relative reference (empty)",
+		raw:  "",
+		uri:  URI{},
+	},
+}
+
+func TestIsValid(t *testing.T) {
+	testcases := []struct {
+		desc    string
+		uri     URI
+		wantErr bool
+	}{
+		// Let's test this later if we want,
+		// as it consists of tested functions.
+		{},
+	}
+	for _, example := range examplePairs {
+		desc := example.desc
+		if desc == "" {
+			desc = example.raw
+		}
+
+		testcases = append(testcases,
+			struct {
+				desc    string
+				uri     URI
+				wantErr bool
+			}{
+				desc:    desc,
+				uri:     example.uri,
+				wantErr: false,
+			})
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := tc.uri.IsValid()
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestURIString(t *testing.T) {
+	for _, example := range examplePairs {
+		desc := example.desc
+		if desc == "" {
+			desc = example.raw
+		}
+
+		t.Run(desc, func(t *testing.T) {
+			assert.Equal(t, example.raw, example.uri.String())
+		})
+	}
+}
+
 func TestParse(t *testing.T) {
 	testcases := []struct {
 		desc  string
@@ -18,84 +175,6 @@ func TestParse(t *testing.T) {
 		uri     URI
 		wantErr bool
 	}{
-		{
-			desc:  "example on RFC (1)",
-			input: "ftp://ftp.is.co.za/rfc/rfc1808.txt",
-			uri: URI{
-				Scheme: "ftp",
-				Authority: &Authority{
-					Host: "ftp.is.co.za",
-				},
-				Path: "/rfc/rfc1808.txt",
-			},
-		},
-		{
-			desc:  "example on RFC (2)",
-			input: "http://www.ietf.org/rfc/rfc2396.txt",
-			uri: URI{
-				Scheme: "http",
-				Authority: &Authority{
-					Host: "www.ietf.org",
-				},
-				Path: "/rfc/rfc2396.txt",
-			},
-		},
-		{
-			desc:  "example on RFC (3)",
-			input: "ldap://[2001:db8::7]/c=GB?objectClass?one",
-			uri: URI{
-				Scheme: "ldap",
-				Authority: &Authority{
-					Host: "[2001:db8::7]",
-				},
-				Path:  "/c=GB",
-				Query: newp("objectClass?one"),
-			},
-		},
-		{
-			desc:  "example on RFC (4)",
-			input: "mailto:John.Doe@example.com",
-			uri: URI{
-				Scheme: "mailto",
-				Path:   "John.Doe@example.com",
-			},
-		},
-		{
-			desc:  "example on RFC (5)",
-			input: "news:comp.infosystems.www.servers.unix",
-			uri: URI{
-				Scheme: "news",
-				Path:   "comp.infosystems.www.servers.unix",
-			},
-		},
-		{
-			desc:  "example on RFC (6)",
-			input: "tel:+1-816-555-1212",
-			uri: URI{
-				Scheme: "tel",
-				Path:   "+1-816-555-1212",
-			},
-		},
-		{
-			desc:  "example on RFC (7)",
-			input: "telnet://192.0.2.16:80/",
-			uri: URI{
-				Scheme: "telnet",
-				Authority: &Authority{
-					Host: "192.0.2.16",
-					Port: newp(uint16(80)),
-				},
-				Path: "/",
-			},
-		},
-		{
-			desc:  "example on RFC (8)",
-			input: "urn:oasis:names:specification:docbook:dtd:xml:4.1.2",
-			uri: URI{
-				Scheme: "urn",
-				Path:   "oasis:names:specification:docbook:dtd:xml:4.1.2",
-			},
-		},
 		{
 			desc:  "scheme is lowercased",
 			input: "HTTP://localhost",
@@ -107,32 +186,29 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			desc:  "relative reference (network-path)",
-			input: "//localhost/",
-			uri: URI{
-				Authority: &Authority{
-					Host: "localhost",
-				},
-				Path: "/",
-			},
-		},
-		{
-			desc:  "relative reference (absolute)",
-			input: "path/relative/ref",
-			uri: URI{
-				Path: "path/relative/ref",
-			},
-		},
-		{
-			desc:  "relative reference (empty)",
-			input: "",
-			uri:   URI{},
-		},
-		{
 			desc:    "contains CTL (control byte)",
 			input:   "\t",
 			wantErr: true,
 		},
+	}
+	for _, example := range examplePairs {
+		desc := example.desc
+		if desc == "" {
+			desc = example.raw
+		}
+
+		testcases = append(testcases,
+			struct {
+				desc    string
+				input   string
+				uri     URI
+				wantErr bool
+			}{
+				desc:    desc,
+				input:   example.raw,
+				uri:     example.uri,
+				wantErr: false,
+			})
 	}
 
 	for _, tc := range testcases {

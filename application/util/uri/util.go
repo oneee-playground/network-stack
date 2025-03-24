@@ -214,3 +214,19 @@ func assertValidPath(path string, hasAuthority bool, isRelative bool) error {
 
 	return nil
 }
+
+func isQueryFragValid(s string) bool {
+	for idx := 0; idx < len(s); idx++ {
+		c := s[idx]
+		if isUnreserved(c) || isSubDelim(c) || c == ':' || c == '@' || c == '/' || c == '?' {
+			continue
+		}
+		if idx+2 < len(s) && isPercentEncoded(s[idx:idx+3]) {
+			idx += 2
+			continue
+		}
+		return false
+	}
+
+	return true
+}

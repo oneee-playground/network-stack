@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// NOTE: Manually created URI should not have escaped characters.
 type URI struct {
 	Scheme    string
 	Authority *Authority
@@ -23,6 +24,73 @@ func (u *URI) IsRelativeRef() bool {
 // Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-4.3
 func (u *URI) IsAbsoluteURI() bool {
 	return u.Scheme != "" && u.Fragment == nil
+}
+
+func (u *URI) IsValid() error {
+	if u.Scheme != "" {
+		if err := assertValidScheme(u.Scheme); err != nil {
+			return errors.Wrap(err, "scheme is not valid")
+		}
+	}
+
+	if u.Authority != nil {
+		if valid := isValidUserInfo(u.Authority.UserInfo); !valid {
+			return errors.New("userinfo is not valid")
+		}
+		if err := assertValidHost(u.Authority.Host); err != nil {
+			return errors.Wrap(err, "host is not valid")
+		}
+	}
+
+	hasAuthority := u.Authority != nil
+	if err := assertValidPath(u.Path, hasAuthority, u.IsRelativeRef()); err != nil {
+		return errors.Wrap(err, "path is not valid")
+	}
+
+	if u.Query != nil && !isQueryFragValid(*u.Query) {
+		return errors.New("query is not valid")
+	}
+	if u.Fragment != nil && !isQueryFragValid(*u.Fragment) {
+		return errors.New("fragment is not valid")
+	}
+
+	return nil
+}
+
+func (u *URI) String() string {
+	b := new(strings.Builder)
+	if u.Scheme != "" {
+		b.WriteString(u.Scheme)
+		b.WriteByte(':')
+	}
+
+	if u.Authority != nil {
+		b.WriteString("//")
+		if u.Authority.UserInfo != "" {
+			b.WriteString(escape(u.Authority.UserInfo, encodeUserInfo))
+			b.WriteByte('@')
+		}
+		b.WriteString(escape(u.Authority.Host, encodeHost))
+		if u.Authority.Port != nil {
+			rawPort := strconv.FormatUint(uint64(*u.Authority.Port), 10)
+			b.WriteRune(':')
+			b.WriteString(rawPort)
+		}
+	}
+
+	b.WriteString(escape(u.Path, encodePath))
+
+	if u.Query != nil {
+		b.WriteByte('?')
+		b.WriteString(escape(*u.Query, encodeQuery))
+	}
+
+	if u.Fragment != nil {
+		b.WriteByte('#')
+		b.WriteString(escape(*u.Fragment, encodeFragment))
+	}
+
+	return b.String()
 }
 
 type Authority struct {
@@ -80,6 +148,10 @@ func Parse(rawURL string) (URI, error) {
 	if len(query) > 0 {
 		// Strip '?' from query.
 		query = query[1:]
+		if !isQueryFragValid(query) {
+			return URI{}, errors.New("query is not valid")
+		}
+
 		q, err := unescape(query)
 		if err != nil {
 			return URI{}, errors.Wrap(err, "unescaping query")
@@ -90,6 +162,10 @@ func Parse(rawURL string) (URI, error) {
 	if len(frag) > 0 {
 		// Strip '#' from fragment.
 		frag = frag[1:]
+		if !isQueryFragValid(frag) {
+			return URI{}, errors.New("frag is not valid")
+		}
+
 		f, err := unescape(frag)
 		if err != nil {
 			return URI{}, errors.Wrap(err, "unescaping fragment")
