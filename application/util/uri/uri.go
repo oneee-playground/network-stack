@@ -15,6 +15,16 @@ type URI struct {
 	Fragment  *string
 }
 
+// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-4.2
+func (u *URI) IsRelativeRef() bool {
+	return u.Scheme == ""
+}
+
+// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-4.3
+func (u *URI) IsAbsoluteURI() bool {
+	return u.Scheme != "" && u.Fragment == nil
+}
+
 type Authority struct {
 	UserInfo string
 	Host     string
@@ -41,7 +51,7 @@ func Parse(rawURL string) (URI, error) {
 	// Scheme is recommended to be lowercase.
 	uri.Scheme = strings.ToLower(scheme)
 
-	if uri.Scheme != "" && strings.HasPrefix(rest, "//") {
+	if strings.HasPrefix(rest, "//") {
 		var authorityRaw string
 		authorityRaw, rest = rest[2:], ""
 		if i := strings.Index(authorityRaw, "/"); i >= 0 {
@@ -58,8 +68,8 @@ func Parse(rawURL string) (URI, error) {
 
 	path, query, frag := splitPathQueryFrag(rest)
 
-	hasAuthority, hasScheme := uri.Authority != nil, uri.Scheme != ""
-	if err := assertValidPath(path, hasAuthority, hasScheme); err != nil {
+	hasAuthority := uri.Authority != nil
+	if err := assertValidPath(path, hasAuthority, uri.IsRelativeRef()); err != nil {
 		return URI{}, errors.Wrap(err, "path is not valid")
 	}
 	uri.Path, err = unescape(path)

@@ -107,6 +107,28 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			desc:  "relative reference (network-path)",
+			input: "//localhost/",
+			uri: URI{
+				Authority: &Authority{
+					Host: "localhost",
+				},
+				Path: "/",
+			},
+		},
+		{
+			desc:  "relative reference (absolute)",
+			input: "path/relative/ref",
+			uri: URI{
+				Path: "path/relative/ref",
+			},
+		},
+		{
+			desc:  "relative reference (empty)",
+			input: "",
+			uri:   URI{},
+		},
+		{
 			desc:    "contains CTL (control byte)",
 			input:   "\t",
 			wantErr: true,

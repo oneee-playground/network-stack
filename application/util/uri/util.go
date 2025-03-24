@@ -188,7 +188,7 @@ func isIPvFuture(s string) bool {
 	return true
 }
 
-func assertValidPath(path string, hasAuthority bool, hasScheme bool) error {
+func assertValidPath(path string, hasAuthority bool, isRelative bool) error {
 	if hasAuthority {
 		if !(path == "" || path[0] == '/') {
 			return errors.New(
@@ -200,15 +200,10 @@ func assertValidPath(path string, hasAuthority bool, hasScheme bool) error {
 	}
 
 	segments := strings.Split(path, "/")
-	if !hasScheme {
-		if segments[0] == "" {
-			return errors.New(
-				"URI without scheme should start with non-zero segment",
-			)
-		}
-		if strings.ContainsRune(segments[0], ':') {
-			return errors.New("URI without scheme should not contain ':'")
-		}
+	if isRelative && strings.ContainsRune(segments[0], ':') {
+		return errors.New(
+			"relative URI reference's first segment should not contain ':'",
+		)
 	}
 
 	for _, segment := range segments {

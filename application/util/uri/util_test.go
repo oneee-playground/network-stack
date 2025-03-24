@@ -222,77 +222,78 @@ func TestAssertValidPath(t *testing.T) {
 		desc         string
 		input        string
 		hasAuthority bool
-		hasScheme    bool
+		isRelative   bool
 		wantErr      bool
 	}{
 		{
 			desc:         "absoulte path",
 			input:        "/path/to/resource",
 			hasAuthority: false,
-			hasScheme:    true,
+			isRelative:   false,
 			wantErr:      false,
 		},
 		{
-			desc:         "absoulte path (first segment should be non-zero)",
+			desc:         "non-relative path starts with '//'",
 			input:        "//path/to/resource",
 			hasAuthority: false,
-			hasScheme:    true,
+			isRelative:   false,
 			wantErr:      true,
 		},
 		{
 			desc:         "relative path (rootless)",
 			input:        "path/to/resource",
 			hasAuthority: false,
-			hasScheme:    false,
+			isRelative:   true,
 			wantErr:      false,
 		},
 		{
 			desc:         "relative path (rootless) 2",
 			input:        "../path/to/resource",
 			hasAuthority: false,
-			hasScheme:    false,
+			isRelative:   true,
 			wantErr:      false,
+		},
+
+		{
+			desc:         "relative reference with absolute path",
+			input:        "/hey/there",
+			hasAuthority: false,
+			isRelative:   true,
+			wantErr:      false,
+		},
+		{
+			desc:         "relative path with colon on first segment",
+			input:        "oh:/hey/there",
+			hasAuthority: false,
+			isRelative:   true,
+			wantErr:      true,
 		},
 		{
 			desc:         "has authority",
 			input:        "/path/to/resource",
 			hasAuthority: true,
-			hasScheme:    true,
+			isRelative:   false,
 			wantErr:      false,
 		},
 		{
 			desc:         "has authority (empty)",
-			input:        "/path/to/resource",
+			input:        "",
 			hasAuthority: true,
-			hasScheme:    true,
+			isRelative:   false,
 			wantErr:      false,
 		},
 		{
 			desc:         "has authority (wrong start char)",
 			input:        "v/path/to/resource",
 			hasAuthority: true,
-			hasScheme:    false,
-			wantErr:      true,
-		},
-		{
-			desc:         "has no scheme and first segment is zro",
-			input:        "/hey/there",
-			hasAuthority: false,
-			hasScheme:    false,
-			wantErr:      true,
-		},
-		{
-			desc:         "has no scheme and has colon on first segment",
-			input:        "oh:/hey/there",
-			hasAuthority: false,
-			hasScheme:    false,
+			isRelative:   true,
 			wantErr:      true,
 		},
 	}
 
 	for _, tc := range testcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			err := assertValidPath(tc.input, tc.hasAuthority, tc.hasScheme)
+			err := assertValidPath(tc.input, tc.hasAuthority, tc.isRelative)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
