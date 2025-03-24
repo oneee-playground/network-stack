@@ -26,3 +26,6 @@ func IsWhitespace(r rune) bool {
 
 func IsAlpha(r rune) bool { return ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') }
 func IsDigit(r rune) bool { return '0' <= r && r <= '9' }
+func IsHex(r rune) bool {
+	return IsDigit(r) || ('a' <= r && r <= 'f') || ('A' <= r && r <= 'F')
+}
