@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newp[T any](n T) *T {
@@ -167,6 +168,67 @@ func TestURIString(t *testing.T) {
 	}
 }
 
+func TestNormalize(t *testing.T) {
+	testcases := []struct {
+		desc   string
+		input  URI
+		output URI
+	}{
+		{
+			desc: "lowercase scheme and host",
+			input: URI{
+				Scheme: "HTTP",
+				Authority: &Authority{
+					Host: "www.EXAMPLE.com",
+				},
+			},
+			output: URI{
+				Scheme: "http",
+				Authority: &Authority{
+					Host: "www.example.com",
+				},
+			},
+		},
+		{
+			desc: "removes percent encoding",
+			input: URI{
+				Scheme: "example",
+				Authority: &Authority{
+					Host: "a",
+				},
+				Path: "/b/c/%7Bfoo%7D",
+			},
+			output: URI{
+				Scheme: "example",
+				Authority: &Authority{
+					Host: "a",
+				},
+				Path: "/b/c/{foo}",
+			},
+		},
+		{
+			desc: "removes dot segments",
+			input: URI{
+				Scheme: "example",
+				Path:   "/a/b/c/./../../g",
+			},
+			output: URI{
+				Scheme: "example",
+				Path:   "/a/g",
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.desc, func(t *testing.T) {
+			out, err := Normalize(tc.input)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.output, out)
+		})
+	}
+}
+
 func TestParse(t *testing.T) {
 	testcases := []struct {
 		desc  string
@@ -178,6 +240,16 @@ func TestParse(t *testing.T) {
 		{
 			desc:  "scheme is lowercased",
 			input: "HTTP://localhost",
+			uri: URI{
+				Scheme: "http",
+				Authority: &Authority{
+					Host: "localhost",
+				},
+			},
+		},
+		{
+			desc:  "host is lowercased",
+			input: "http://LOcalHOST",
 			uri: URI{
 				Scheme: "http",
 				Authority: &Authority{

@@ -1,6 +1,7 @@
 package uri
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -301,4 +302,28 @@ func TestAssertValidPath(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestRemoveDotSegments(t *testing.T) {
+	testcase := []struct {
+		input  string
+		output string
+	}{
+		{
+			input:  "/a/b/c/./../../g",
+			output: "/a/g",
+		},
+		{
+			input:  "mid/content=5/../6",
+			output: "mid/6",
+		},
+	}
+
+	for _, tc := range testcase {
+		t.Run(fmt.Sprintf("%s -> %s", tc.input, tc.output), func(t *testing.T) {
+			out := removeDotSegments(tc.input)
+			assert.Equal(t, tc.output, out)
+		})
+	}
+
 }

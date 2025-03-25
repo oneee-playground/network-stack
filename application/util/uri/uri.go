@@ -105,6 +105,49 @@ type Authority struct {
 	Port *uint16
 }
 
+// Normalize performs syntax-based normalization on given URI.
+// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-6.2.2
+func Normalize(uri URI) (URI, error) {
+	if err := uri.IsValid(); err != nil {
+		return URI{}, errors.Wrap(err, "URI is not valid")
+	}
+
+	uri.Scheme = strings.ToLower(uri.Scheme)
+	if uri.Authority != nil {
+		uri.Authority.Host = strings.ToLower(uri.Authority.Host)
+	}
+
+	uri.Path = removeDotSegments(uri.Path)
+
+	var err error
+	// Unescape components.
+	if uri.Path, err = unescape(uri.Path); err != nil {
+		return URI{}, errors.Wrap(err, "unescaping path")
+	}
+	if uri.Authority != nil {
+		a := uri.Authority
+		if a.UserInfo, err = unescape(a.UserInfo); err != nil {
+			return URI{}, errors.Wrap(err, "unescaping userinfo")
+		}
+		if a.Host, err = unescape(a.Host); err != nil {
+			return URI{}, errors.Wrap(err, "unescaping host")
+		}
+		uri.Authority = a
+	}
+	if uri.Query != nil {
+		if *uri.Query, err = unescape(*uri.Query); err != nil {
+			return URI{}, errors.Wrap(err, "unescaping query")
+		}
+	}
+	if uri.Fragment != nil {
+		if *uri.Fragment, err = unescape(*uri.Fragment); err != nil {
+			return URI{}, errors.Wrap(err, "unescaping fragment")
+		}
+	}
+
+	return uri, nil
+}
+
 func Parse(rawURL string) (URI, error) {
 	if containsCTL(rawURL) {
 		return URI{}, errors.New("URI should not contain CTL bytes")
@@ -153,11 +196,10 @@ func Parse(rawURL string) (URI, error) {
 			return URI{}, errors.New("query is not valid")
 		}
 
-		q, err := unescape(query)
-		if err != nil {
+		if query, err = unescape(query); err != nil {
 			return URI{}, errors.Wrap(err, "unescaping query")
 		}
-		uri.Query = &q
+		uri.Query = &query
 	}
 
 	if len(frag) > 0 {
@@ -167,11 +209,10 @@ func Parse(rawURL string) (URI, error) {
 			return URI{}, errors.New("frag is not valid")
 		}
 
-		f, err := unescape(frag)
-		if err != nil {
+		if frag, err = unescape(frag); err != nil {
 			return URI{}, errors.Wrap(err, "unescaping fragment")
 		}
-		uri.Fragment = &f
+		uri.Fragment = &frag
 	}
 
 	return uri, nil
@@ -225,10 +266,10 @@ func parseAuthority(raw string) (authority Authority, err error) {
 		authority.Port = &port
 	}
 
-	authority.Host, err = unescape(host)
-	if err != nil {
+	if authority.Host, err = unescape(host); err != nil {
 		return Authority{}, errors.Wrap(err, "unescaping host")
 	}
+	authority.Host = strings.ToLower(authority.Host)
 
 	return authority, nil
 }
