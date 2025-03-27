@@ -64,14 +64,14 @@ func (s *MessageEncoderTestSuite) TestWriteLine() {
 func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 	testcases := []struct {
 		desc     string
-		headers []Field
+		headers  []Field
 		opts     EncodeOptions
 		expected string
 		wantErr  bool
 	}{
 		{
 			desc: "simple headers with CRLF",
-			headers:[]Field{
+			headers: []Field{
 				{[]byte("Host"), []byte("example.com")},
 			},
 			expected: "" +
@@ -80,7 +80,7 @@ func (s *MessageEncoderTestSuite) TestEncodeHeaders() {
 		},
 		{
 			desc:     "empty headers",
-			headers: []Field{},
+			headers:  []Field{},
 			expected: "\r\n",
 		},
 	}
@@ -119,12 +119,12 @@ func (s *RequestEncoderTestSuite) TestEncode() {
 	body := "field1=value1"
 
 	input := Request{
-		requestLine: requestLine{
+		RequestLine: RequestLine{
 			Method:  "POST",
 			Target:  "/example",
 			Version: Version{1, 1},
 		},
-		Headers:[]Field{
+		Headers: []Field{
 			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
@@ -145,7 +145,7 @@ func (s *RequestEncoderTestSuite) TestEncode() {
 }
 
 func (s *RequestEncoderTestSuite) TestEncodeRequestLine() {
-	input := requestLine{
+	input := RequestLine{
 		Method:  "GET",
 		Target:  "/example",
 		Version: Version{1, 1},
@@ -174,12 +174,12 @@ func (s *ResponseEncoderTestSuite) TestEncode() {
 	body := "field1=value1"
 
 	input := Response{
-		statusLine: statusLine{
+		StatusLine: StatusLine{
 			Version:      Version{1, 1},
 			StatusCode:   200,
 			ReasonPhrase: "OK",
 		},
-		Headers:[]Field{
+		Headers: []Field{
 			{[]byte("Host"), []byte("example.com")},
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
@@ -200,7 +200,7 @@ func (s *ResponseEncoderTestSuite) TestEncode() {
 }
 
 func (s *ResponseEncoderTestSuite) TestEncodeStatusLine() {
-	input := statusLine{
+	input := StatusLine{
 		Version:      Version{1, 1},
 		StatusCode:   200,
 		ReasonPhrase: "OK",

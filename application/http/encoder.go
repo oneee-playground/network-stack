@@ -71,7 +71,7 @@ func NewRequestEncoder(w io.Writer, opts EncodeOptions) *RequestEncoder {
 }
 
 func (re *RequestEncoder) Encode(request Request) error {
-	if err := re.encodeRequestLine(request.requestLine); err != nil {
+	if err := re.encodeRequestLine(request.RequestLine); err != nil {
 		return errors.Wrap(err, "encoding request line")
 	}
 
@@ -95,7 +95,7 @@ func (re *RequestEncoder) Encode(request Request) error {
 	return nil
 }
 
-func (re *RequestEncoder) encodeRequestLine(reqLine requestLine) error {
+func (re *RequestEncoder) encodeRequestLine(reqLine RequestLine) error {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write([]byte(reqLine.Method))
@@ -123,7 +123,7 @@ func NewResponseEncoder(w io.Writer, opts EncodeOptions) *ResponseEncoder {
 }
 
 func (re *ResponseEncoder) Encode(response Response) error {
-	if err := re.encodeStatusLine(response.statusLine); err != nil {
+	if err := re.encodeStatusLine(response.StatusLine); err != nil {
 		return errors.Wrap(err, "encoding status line")
 	}
 
@@ -148,7 +148,7 @@ func (re *ResponseEncoder) Encode(response Response) error {
 	return nil
 }
 
-func (re *ResponseEncoder) encodeStatusLine(statLine statusLine) error {
+func (re *ResponseEncoder) encodeStatusLine(statLine StatusLine) error {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(statLine.Version.Text())

@@ -161,7 +161,7 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 		body
 
 	expected := Request{
-		requestLine: requestLine{
+		RequestLine: RequestLine{
 			Method:  "POST",
 			Target:  "/example",
 			Version: Version{1, 1},
@@ -196,7 +196,7 @@ func (s *RequestDecoderTestSuite) TestDecodeRequestLine() {
 		desc     string
 		input    []byte
 		opts     DecodeOptions
-		expected requestLine
+		expected RequestLine
 		wantErr  error
 	}{
 		{
@@ -206,7 +206,7 @@ func (s *RequestDecoderTestSuite) TestDecodeRequestLine() {
 				"\r\n" +
 				"GET /abc HTTP/1.1\r\n",
 			),
-			expected: requestLine{
+			expected: RequestLine{
 				Method:  "GET",
 				Target:  "/abc",
 				Version: Version{1, 1},
@@ -233,7 +233,7 @@ func (s *RequestDecoderTestSuite) TestDecodeRequestLine() {
 		s.Run(tc.desc, func() {
 			rd := NewRequestDecoder(bytes.NewReader(tc.input), tc.opts)
 
-			var reqLine requestLine
+			var reqLine RequestLine
 			err := rd.decodeRequestLine(&reqLine)
 			if tc.wantErr != nil {
 				s.ErrorIs(err, tc.wantErr)
@@ -251,12 +251,12 @@ func TestParseRequestLine(t *testing.T) {
 	testcases := []struct {
 		desc     string
 		input    []byte
-		expected requestLine
+		expected RequestLine
 		wantErr  bool
 	}{
 		{
 			input: []byte("GET / HTTP/1.0"),
-			expected: requestLine{
+			expected: RequestLine{
 				Method:  "GET",
 				Target:  "/",
 				Version: Version{1, 0},
@@ -264,7 +264,7 @@ func TestParseRequestLine(t *testing.T) {
 		},
 		{
 			input: []byte("POST /nested/path HTTP/0.3"),
-			expected: requestLine{
+			expected: RequestLine{
 				Method:  "POST",
 				Target:  "/nested/path",
 				Version: Version{0, 3},
@@ -334,7 +334,7 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 		body
 
 	expected := Response{
-		statusLine: statusLine{
+		StatusLine: StatusLine{
 			Version:      Version{1, 1},
 			StatusCode:   200,
 			ReasonPhrase: "OK",
@@ -368,7 +368,7 @@ func (s *ResponseDecoderTestSuite) TestDecodeStatusLine() {
 		desc     string
 		input    []byte
 		opts     DecodeOptions
-		expected statusLine
+		expected StatusLine
 		wantErr  error
 	}{
 		{
@@ -377,7 +377,7 @@ func (s *ResponseDecoderTestSuite) TestDecodeStatusLine() {
 				"\r\n" + // leading empty lines.
 				"\r\n" +
 				"HTTP/1.1 200 OK\r\n"),
-			expected: statusLine{
+			expected: StatusLine{
 				Version:      Version{1, 1},
 				StatusCode:   200,
 				ReasonPhrase: "OK",
@@ -404,7 +404,7 @@ func (s *ResponseDecoderTestSuite) TestDecodeStatusLine() {
 		s.Run(tc.desc, func() {
 			rd := NewResponseDecoder(bytes.NewReader(tc.input), tc.opts)
 
-			var statLine statusLine
+			var statLine StatusLine
 			err := rd.decodeStatusLine(&statLine)
 			if tc.wantErr != nil {
 				s.ErrorIs(err, tc.wantErr)
@@ -421,13 +421,13 @@ func TestParseStatusLine(t *testing.T) {
 	testcases := []struct {
 		desc     string
 		input    []byte
-		expected statusLine
+		expected StatusLine
 		wantErr  bool
 	}{
 		{
 			desc:  "valid status line",
 			input: []byte("HTTP/1.1 200 OK"),
-			expected: statusLine{
+			expected: StatusLine{
 				Version:      Version{1, 1},
 				StatusCode:   200,
 				ReasonPhrase: "OK",
@@ -436,7 +436,7 @@ func TestParseStatusLine(t *testing.T) {
 		{
 			desc:  "valid status line with reason phrase",
 			input: []byte("HTTP/1.0 404 Not Found"),
-			expected: statusLine{
+			expected: StatusLine{
 				Version:      Version{1, 0},
 				StatusCode:   404,
 				ReasonPhrase: "Not Found",
@@ -471,7 +471,7 @@ func TestParseStatusLine(t *testing.T) {
 			desc:    "missing reason phrase",
 			input:   []byte("HTTP/1.1 200 "),
 			wantErr: false,
-			expected: statusLine{
+			expected: StatusLine{
 				Version:      Version{1, 1},
 				StatusCode:   200,
 				ReasonPhrase: "",

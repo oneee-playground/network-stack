@@ -9,27 +9,27 @@ import (
 	"github.com/pkg/errors"
 )
 
-type requestLine struct {
+type RequestLine struct {
 	Method  string
 	Target  string
 	Version Version
 }
 
 type Request struct {
-	requestLine
+	RequestLine
 	Headers []Field
 
 	Body io.ReadCloser
 }
 
-type statusLine struct {
+type StatusLine struct {
 	Version      Version
 	StatusCode   uint
 	ReasonPhrase string
 }
 
 type Response struct {
-	statusLine
+	StatusLine
 	Headers []Field
 	Body    io.ReadCloser
 }

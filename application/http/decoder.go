@@ -141,7 +141,7 @@ func NewRequestDecoder(r io.Reader, opts DecodeOptions) *RequestDecoder {
 
 // r MUST be a non-nil pointer
 func (rd *RequestDecoder) Decode(r *Request) error {
-	if err := rd.decodeRequestLine(&r.requestLine); err != nil {
+	if err := rd.decodeRequestLine(&r.RequestLine); err != nil {
 		return errors.Wrap(err, "parsing request line")
 	}
 
@@ -154,7 +154,7 @@ func (rd *RequestDecoder) Decode(r *Request) error {
 	return nil
 }
 
-func (rd *RequestDecoder) decodeRequestLine(reqLine *requestLine) error {
+func (rd *RequestDecoder) decodeRequestLine(reqLine *RequestLine) error {
 	var line []byte
 	for {
 		b, err := rd.readLine(rd.opts.MaxRequestLineLength)
@@ -183,28 +183,28 @@ func (rd *RequestDecoder) decodeRequestLine(reqLine *requestLine) error {
 	return nil
 }
 
-func parseRequestLine(line []byte) (requestLine, error) {
+func parseRequestLine(line []byte) (RequestLine, error) {
 	parts := bytes.Split(line, []byte{rule.SP})
 	if len(parts) != 3 {
-		return requestLine{}, errors.New("request line is malformed")
+		return RequestLine{}, errors.New("request line is malformed")
 	}
 
 	method := string(parts[0])
 	if !rule.IsValidToken(method) {
-		return requestLine{}, errors.New("method is not a valid token")
+		return RequestLine{}, errors.New("method is not a valid token")
 	}
 
 	target := string(parts[1])
 	if len(target) == 0 {
-		return requestLine{}, errors.New("request target should not be empty")
+		return RequestLine{}, errors.New("request target should not be empty")
 	}
 
 	ver, err := ParseVersion(parts[2])
 	if err != nil {
-		return requestLine{}, errors.Wrap(err, "parsing version")
+		return RequestLine{}, errors.Wrap(err, "parsing version")
 	}
 
-	return requestLine{Method: method, Target: target, Version: ver}, nil
+	return RequestLine{Method: method, Target: target, Version: ver}, nil
 }
 
 var (
@@ -222,7 +222,7 @@ func NewResponseDecoder(r io.Reader, opts DecodeOptions) *ResponseDecoder {
 
 // r MUST be a non-nil pointer
 func (rd *ResponseDecoder) Decode(r *Response) error {
-	if err := rd.decodeStatusLine(&r.statusLine); err != nil {
+	if err := rd.decodeStatusLine(&r.StatusLine); err != nil {
 		return errors.Wrap(err, "parsing request line")
 	}
 
@@ -235,7 +235,7 @@ func (rd *ResponseDecoder) Decode(r *Response) error {
 	return nil
 }
 
-func (rd *ResponseDecoder) decodeStatusLine(statLine *statusLine) error {
+func (rd *ResponseDecoder) decodeStatusLine(statLine *StatusLine) error {
 	var line []byte
 	for {
 		b, err := rd.readLine(rd.opts.MaxStatusLineLength)
@@ -264,25 +264,25 @@ func (rd *ResponseDecoder) decodeStatusLine(statLine *statusLine) error {
 	return nil
 }
 
-func parseStatusLine(line []byte) (statusLine, error) {
+func parseStatusLine(line []byte) (StatusLine, error) {
 	parts := bytes.SplitN(line, []byte{rule.SP}, 3)
 	if len(parts) < 3 {
-		return statusLine{}, errors.New("status line is malformed")
+		return StatusLine{}, errors.New("status line is malformed")
 	}
 
 	ver, err := ParseVersion(parts[0])
 	if err != nil {
-		return statusLine{}, errors.Wrap(err, "parsing version")
+		return StatusLine{}, errors.Wrap(err, "parsing version")
 	}
 
 	statusCodeStr := string(parts[1])
 	statusCode, err := strconv.ParseUint(statusCodeStr, 10, 64)
 	if err != nil || len(statusCodeStr) != 3 {
-		return statusLine{}, errors.Errorf("status code is malformed: %q", statusCodeStr)
+		return StatusLine{}, errors.Errorf("status code is malformed: %q", statusCodeStr)
 	}
 
 	// reason-phrase is optional.
 	reasonPhrase := string(parts[2])
 
-	return statusLine{Version: ver, StatusCode: uint(statusCode), ReasonPhrase: reasonPhrase}, nil
+	return StatusLine{Version: ver, StatusCode: uint(statusCode), ReasonPhrase: reasonPhrase}, nil
 }
