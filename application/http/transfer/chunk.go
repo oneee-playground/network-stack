@@ -25,19 +25,18 @@ type ChunkedReader struct {
 	read     uint // reset for each chunk
 	crlfDump []byte
 
-	// trailerStore points at external trailer storage.
-	trailerStore *[]http.Field
+	onTrailerReceived func([]http.Field)
 }
 
 var _ io.Reader = (*ChunkedReader)(nil)
 
 // NewChunkedReader converts chunked http message into byte stream.
 // if trailerStore is not nil, it will be filled on last Read.
-func NewChunkedReader(r io.Reader, trailerStore *[]http.Field) *ChunkedReader {
+func NewChunkedReader(r io.Reader, onTrailerReceived func([]http.Field)) *ChunkedReader {
 	return &ChunkedReader{
-		br:           bufio.NewReader(r),
-		crlfDump:     make([]byte, 2),
-		trailerStore: trailerStore,
+		br:                bufio.NewReader(r),
+		crlfDump:          make([]byte, 2),
+		onTrailerReceived: onTrailerReceived,
 	}
 }
 
@@ -164,8 +163,8 @@ func (cr *ChunkedReader) decodeTrailers() error {
 		fields = append(fields, field)
 	}
 
-	if cr.trailerStore != nil {
-		*cr.trailerStore = fields
+	if cr.onTrailerReceived != nil {
+		cr.onTrailerReceived(fields)
 	}
 
 	return nil
@@ -176,17 +175,17 @@ type ChunkedWriter struct {
 	headerBuf *bytes.Buffer
 
 	extensions [][2]string
-	// trailerStore points at external trailer storage.
-	trailerStore *[]http.Field
+
+	sendTrailers func() []http.Field
 }
 
 var _ io.WriteCloser = (*ChunkedWriter)(nil)
 
-func NewChunkedWriter(w io.Writer, trailerStore *[]http.Field) *ChunkedWriter {
+func NewChunkedWriter(w io.Writer, sendTrailers func() []http.Field) *ChunkedWriter {
 	return &ChunkedWriter{
 		w:            w,
 		headerBuf:    bytes.NewBuffer(nil),
-		trailerStore: trailerStore,
+		sendTrailers: sendTrailers,
 	}
 }
 
@@ -268,8 +267,9 @@ func (cw *ChunkedWriter) encodeChunk(chunk Chunk) (n int, err error) {
 }
 
 func (cw *ChunkedWriter) encodeTrailers() error {
-	if cw.trailerStore != nil {
-		for _, field := range *cw.trailerStore {
+	if cw.sendTrailers != nil {
+		trailers := cw.sendTrailers()
+		for _, field := range trailers {
 			if err := writeLine(cw.w, field.Text()); err != nil {
 				return errors.Wrap(err, "writing trailer")
 			}

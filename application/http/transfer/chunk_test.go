@@ -32,7 +32,11 @@ func (s *ChunkedReaderTestSuite) TestRead() {
 	)
 
 	trailers := make([]http.Field, 0)
-	cr := NewChunkedReader(bytes.NewReader(input), &trailers)
+	cr := NewChunkedReader(
+		bytes.NewReader(input),
+		func(f []http.Field) {
+			trailers = f
+		})
 
 	buf := make([]byte, 2)
 	// First read reads only AB
@@ -178,7 +182,9 @@ func (s *ChunkedReaderTestSuite) TestDecodeTrailers() {
 	}
 
 	store := make([]http.Field, 0)
-	cr := NewChunkedReader(r, &store)
+	cr := NewChunkedReader(r, func(f []http.Field) {
+		store = f
+	})
 
 	s.NoError(cr.decodeTrailers())
 	s.Equal(expected, store)
@@ -221,7 +227,9 @@ func (s *ChunkedWriterTestSuite) TestClose() {
 	trailers := []http.Field{{Name: []byte("foo"), Value: []byte("bar")}}
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(buf, &trailers)
+	cw := NewChunkedWriter(buf, func() []http.Field {
+		return trailers
+	})
 
 	cw.SetExtensions([][2]string{{"foo", "bar"}})
 	expected := []byte("" +
@@ -291,7 +299,9 @@ func (s *ChunkedWriterTestSuite) TestEncodeTrailers() {
 
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(buf, &trailers)
+	cw := NewChunkedWriter(buf, func() []http.Field {
+		return trailers
+	})
 
 	s.Require().NoError(cw.encodeTrailers())
 	s.Equal(expected, buf.Bytes())
