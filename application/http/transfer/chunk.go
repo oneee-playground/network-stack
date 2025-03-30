@@ -19,6 +19,16 @@ type Chunk struct {
 	data       io.Reader
 }
 
+type chunkedCoderFactory struct{}
+
+var _ (CoderFactory) = (*chunkedCoderFactory)(nil)
+
+func NewChuknedCoderFactory() *chunkedCoderFactory { return &chunkedCoderFactory{} }
+
+func (f *chunkedCoderFactory) Coding() Coding                            { return CodingChunked }
+func (f *chunkedCoderFactory) NewReader(r io.Reader) io.Reader           { return NewChunkedReader(r) }
+func (f *chunkedCoderFactory) NewWriter(w io.WriteCloser) io.WriteCloser { return NewChunkedWriter(w) }
+
 type ChunkedReader struct {
 	br       *bufio.Reader
 	chunk    *Chunk
@@ -32,12 +42,18 @@ var _ io.Reader = (*ChunkedReader)(nil)
 
 // NewChunkedReader converts chunked http message into byte stream.
 // if trailerStore is not nil, it will be filled on last Read.
-func NewChunkedReader(r io.Reader, onTrailerReceived func([]http.Field)) *ChunkedReader {
-	return &ChunkedReader{
-		br:                bufio.NewReader(r),
-		crlfDump:          make([]byte, 2),
-		onTrailerReceived: onTrailerReceived,
+func NewChunkedReader(r io.Reader) *ChunkedReader {
+	cr := &ChunkedReader{crlfDump: make([]byte, 2)}
+	if br, ok := r.(*bufio.Reader); ok {
+		cr.br = br
+	} else {
+		cr.br = bufio.NewReader(r)
 	}
+	return cr
+}
+
+func (cr *ChunkedReader) SetOnTrailerReceived(onTrailerReceived func([]http.Field)) {
+	cr.onTrailerReceived = onTrailerReceived
 }
 
 func (cr *ChunkedReader) LastChunk() *Chunk {
@@ -171,7 +187,7 @@ func (cr *ChunkedReader) decodeTrailers() error {
 }
 
 type ChunkedWriter struct {
-	w         io.Writer
+	w         io.WriteCloser
 	headerBuf *bytes.Buffer
 
 	extensions [][2]string
@@ -181,12 +197,15 @@ type ChunkedWriter struct {
 
 var _ io.WriteCloser = (*ChunkedWriter)(nil)
 
-func NewChunkedWriter(w io.Writer, sendTrailers func() []http.Field) *ChunkedWriter {
+func NewChunkedWriter(w io.WriteCloser) *ChunkedWriter {
 	return &ChunkedWriter{
-		w:            w,
-		headerBuf:    bytes.NewBuffer(nil),
-		sendTrailers: sendTrailers,
+		w:         w,
+		headerBuf: bytes.NewBuffer(nil),
 	}
+}
+
+func (cw *ChunkedWriter) SetSendTrailers(sendTrailers func() []http.Field) {
+	cw.sendTrailers = sendTrailers
 }
 
 // SetExtensions sets extension to the chunk.
