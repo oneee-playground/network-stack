@@ -134,9 +134,14 @@ var (
 type RequestDecoder struct{ MessageDecoder }
 
 func NewRequestDecoder(r io.Reader, opts DecodeOptions) *RequestDecoder {
-	return &RequestDecoder{
-		MessageDecoder{br: bufio.NewReader(r), opts: opts},
+	rd := &RequestDecoder{MessageDecoder{opts: opts}}
+	if br, ok := r.(*bufio.Reader); ok {
+		rd.br = br
+	} else {
+		rd.br = bufio.NewReader(r)
 	}
+
+	return rd
 }
 
 // r MUST be a non-nil pointer
