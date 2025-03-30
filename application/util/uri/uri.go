@@ -1,6 +1,7 @@
 package uri
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 
@@ -67,16 +68,7 @@ func (u *URI) String() string {
 
 	if u.Authority != nil {
 		b.WriteString("//")
-		if u.Authority.UserInfo != "" {
-			b.WriteString(escape(u.Authority.UserInfo, encodeUserInfo))
-			b.WriteByte('@')
-		}
-		b.WriteString(escape(u.Authority.Host, encodeHost))
-		if u.Authority.Port != nil {
-			rawPort := strconv.FormatUint(uint64(*u.Authority.Port), 10)
-			b.WriteRune(':')
-			b.WriteString(rawPort)
-		}
+		b.WriteString(u.Authority.String())
 	}
 
 	b.WriteString(escape(u.Path, encodePath))
@@ -103,6 +95,21 @@ type Authority struct {
 	// But since the pacakge uri is library, I'll use uint16 for usability.
 	// Reference: datatracker.ietf.org/doc/html/rfc3986#section-3.2.3
 	Port *uint16
+}
+
+func (a Authority) String() string {
+	b := bytes.NewBuffer(nil)
+	if a.UserInfo != "" {
+		b.WriteString(escape(a.UserInfo, encodeUserInfo))
+		b.WriteByte('@')
+	}
+	b.WriteString(escape(a.Host, encodeHost))
+	if a.Port != nil {
+		rawPort := strconv.FormatUint(uint64(*a.Port), 10)
+		b.WriteRune(':')
+		b.WriteString(rawPort)
+	}
+	return b.String()
 }
 
 // Normalize performs syntax-based normalization on given URI.
