@@ -136,7 +136,6 @@ func (re *ResponseEncoder) Encode(response Response) error {
 		return errors.Wrap(err, "flushing response line & header")
 	}
 
-	defer response.Body.Close()
 	if _, err := re.bw.ReadFrom(response.Body); err != nil {
 		return errors.Wrap(err, "writing response body")
 	}

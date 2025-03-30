@@ -19,7 +19,7 @@ type Request struct {
 	RequestLine
 	Headers []Field
 
-	Body io.ReadCloser
+	Body io.Reader
 }
 
 type StatusLine struct {
@@ -31,7 +31,7 @@ type StatusLine struct {
 type Response struct {
 	StatusLine
 	Headers []Field
-	Body    io.ReadCloser
+	Body    io.Reader
 }
 
 // [Major, Minor]

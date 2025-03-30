@@ -149,7 +149,7 @@ func (rd *RequestDecoder) Decode(r *Request) error {
 		return errors.Wrap(err, "parsing headers")
 	}
 
-	r.Body = io.NopCloser(rd.br)
+	r.Body = rd.br
 
 	return nil
 }
@@ -230,7 +230,7 @@ func (rd *ResponseDecoder) Decode(r *Response) error {
 		return errors.Wrap(err, "parsing headers")
 	}
 
-	r.Body = io.NopCloser(rd.br)
+	r.Body = rd.br
 
 	return nil
 }
