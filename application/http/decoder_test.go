@@ -1,10 +1,10 @@
 package http
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"network-stack/application/util/rule"
+	iolib "network-stack/lib/io"
 	"strings"
 	"testing"
 
@@ -72,7 +72,7 @@ func (s *MessageDecoderTestSuite) TestReadLine() {
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
 			d := MessageDecoder{
-				br:   bufio.NewReader(strings.NewReader(tc.input)),
+				r:    iolib.NewUntilReader(strings.NewReader(tc.input)),
 				opts: tc.opts,
 			}
 
@@ -124,7 +124,7 @@ func (s *MessageDecoderTestSuite) TestDecodeHeaders() {
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
 			d := MessageDecoder{
-				br:   bufio.NewReader(strings.NewReader(tc.input)),
+				r:    iolib.NewUntilReader(strings.NewReader(tc.input)),
 				opts: tc.opts,
 			}
 
@@ -173,7 +173,9 @@ func (s *RequestDecoderTestSuite) TestDecode() {
 		},
 	}
 
-	rd := NewRequestDecoder(strings.NewReader(rawRequest), DefaultDecodeOptions)
+	rd := NewRequestDecoder(
+		iolib.NewUntilReader(strings.NewReader(rawRequest)),
+		DefaultDecodeOptions)
 
 	var request Request
 	err := rd.Decode(&request)
@@ -231,7 +233,10 @@ func (s *RequestDecoderTestSuite) TestDecodeRequestLine() {
 
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
-			rd := NewRequestDecoder(bytes.NewReader(tc.input), tc.opts)
+			rd := NewRequestDecoder(
+				iolib.NewUntilReader(bytes.NewReader(tc.input)),
+				tc.opts,
+			)
 
 			var reqLine RequestLine
 			err := rd.decodeRequestLine(&reqLine)
@@ -345,7 +350,10 @@ func (s *ResponseDecoderTestSuite) TestDecode() {
 		},
 	}
 
-	rd := NewResponseDecoder(strings.NewReader(rawResponse), DefaultDecodeOptions)
+	rd := NewResponseDecoder(
+		iolib.NewUntilReader(strings.NewReader(rawResponse)),
+		DefaultDecodeOptions,
+	)
 
 	var response Response
 	err := rd.Decode(&response)
@@ -402,7 +410,10 @@ func (s *ResponseDecoderTestSuite) TestDecodeStatusLine() {
 
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
-			rd := NewResponseDecoder(bytes.NewReader(tc.input), tc.opts)
+			rd := NewResponseDecoder(
+				iolib.NewUntilReader(bytes.NewReader(tc.input)),
+				tc.opts,
+			)
 
 			var statLine StatusLine
 			err := rd.decodeStatusLine(&statLine)

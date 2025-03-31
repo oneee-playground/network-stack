@@ -1,13 +1,12 @@
 package http
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"strconv"
 
 	"network-stack/application/util/rule"
-	byteslib "network-stack/lib/bytes"
+	iolib "network-stack/lib/io"
 
 	"github.com/pkg/errors"
 )
@@ -48,7 +47,7 @@ var DefaultDecodeOptions = DecodeOptions{
 }
 
 type MessageDecoder struct {
-	br   *bufio.Reader
+	r    *iolib.UntilReader
 	opts DecodeOptions
 }
 
@@ -58,14 +57,12 @@ var (
 )
 
 func (md *MessageDecoder) readLine(limit uint) ([]byte, error) {
-	b, err := byteslib.ReadUntil(md.br, []byte{rule.LF})
+	b, err := md.r.ReadUntilLimit([]byte{rule.LF}, limit)
 	if err != nil {
+		if limit > 0 && err == io.EOF {
+			return nil, errLineTooLong
+		}
 		return nil, err
-	}
-
-	if limit > 0 && uint(len(b)) > limit {
-		// TODO: This does not prevent reading huge bytes.
-		return nil, errLineTooLong
 	}
 
 	b = b[:len(b)-1] // Remove LF.
@@ -133,15 +130,11 @@ var (
 
 type RequestDecoder struct{ MessageDecoder }
 
-func NewRequestDecoder(r io.Reader, opts DecodeOptions) *RequestDecoder {
-	rd := &RequestDecoder{MessageDecoder{opts: opts}}
-	if br, ok := r.(*bufio.Reader); ok {
-		rd.br = br
-	} else {
-		rd.br = bufio.NewReader(r)
-	}
-
-	return rd
+func NewRequestDecoder(r *iolib.UntilReader, opts DecodeOptions) *RequestDecoder {
+	return &RequestDecoder{MessageDecoder{
+		opts: opts,
+		r:    r,
+	}}
 }
 
 // r MUST be a non-nil pointer
@@ -154,7 +147,7 @@ func (rd *RequestDecoder) Decode(r *Request) error {
 		return errors.Wrap(err, "parsing headers")
 	}
 
-	r.Body = rd.br
+	r.Body = rd.r
 
 	return nil
 }
@@ -219,9 +212,12 @@ var (
 
 type ResponseDecoder struct{ MessageDecoder }
 
-func NewResponseDecoder(r io.Reader, opts DecodeOptions) *ResponseDecoder {
+func NewResponseDecoder(r *iolib.UntilReader, opts DecodeOptions) *ResponseDecoder {
 	return &ResponseDecoder{
-		MessageDecoder{br: bufio.NewReader(r), opts: opts},
+		MessageDecoder{
+			r:    r,
+			opts: opts,
+		},
 	}
 }
 
@@ -235,7 +231,7 @@ func (rd *ResponseDecoder) Decode(r *Response) error {
 		return errors.Wrap(err, "parsing headers")
 	}
 
-	r.Body = rd.br
+	r.Body = rd.r
 
 	return nil
 }
