@@ -1,10 +1,10 @@
 package transfer
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"network-stack/application/http"
+	iolib "network-stack/lib/io"
 	"strings"
 	"testing"
 
@@ -32,7 +32,7 @@ func (s *ChunkedReaderTestSuite) TestRead() {
 	)
 
 	trailers := make([]http.Field, 0)
-	cr := NewChunkedReader(bytes.NewReader(input))
+	cr := NewChunkedCoder().NewReader(bytes.NewReader(input)).(*ChunkedReader)
 	cr.SetOnTrailerReceived(func(f []http.Field) { trailers = f })
 
 	buf := make([]byte, 2)
@@ -107,7 +107,7 @@ func (s *ChunkedReaderTestSuite) TestDecodeChunk() {
 
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
-			cr := NewChunkedReader(bytes.NewReader(tc.input))
+			cr := NewChunkedCoder().NewReader(bytes.NewReader(tc.input)).(*ChunkedReader)
 
 			err := cr.decodeChunk()
 			if tc.wantErr {
@@ -179,7 +179,7 @@ func (s *ChunkedReaderTestSuite) TestDecodeTrailers() {
 	}
 
 	store := make([]http.Field, 0)
-	cr := NewChunkedReader(r)
+	cr := NewChunkedCoder().NewReader(r).(*ChunkedReader)
 	cr.SetOnTrailerReceived(func(f []http.Field) { store = f })
 
 	s.NoError(cr.decodeTrailers())
@@ -197,7 +197,7 @@ func TestChunkedWriterTestSuite(t *testing.T) {
 func (s *ChunkedWriterTestSuite) TestWrite() {
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 
 	// Empty write is ignored
 	n, err := cw.Write(nil)
@@ -223,7 +223,7 @@ func (s *ChunkedWriterTestSuite) TestClose() {
 	trailers := []http.Field{{Name: []byte("foo"), Value: []byte("bar")}}
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 	cw.SetSendTrailers(func() []http.Field { return trailers })
 
 	cw.SetExtensions([][2]string{{"foo", "bar"}})
@@ -254,7 +254,7 @@ func (s *ChunkedWriterTestSuite) TestEncodeChunk() {
 
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 
 	_, err := cw.encodeChunk(chunk)
 	s.Require().NoError(err)
@@ -274,7 +274,7 @@ func (s *ChunkedWriterTestSuite) TestEncodeChunkLast() {
 
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 
 	_, err := cw.encodeChunk(chunk)
 	s.Require().NoError(err)
@@ -294,7 +294,7 @@ func (s *ChunkedWriterTestSuite) TestEncodeTrailers() {
 
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 	cw.SetSendTrailers(func() []http.Field { return trailers })
 
 	s.Require().NoError(cw.encodeTrailers())
@@ -306,7 +306,7 @@ func (s *ChunkedWriterTestSuite) TestEncodeTrailersNil() {
 
 	buf := bytes.NewBuffer(nil)
 
-	cw := NewChunkedWriter(&stubWriteCloser{buf: buf})
+	cw := NewChunkedCoder().NewWriter(&stubWriteCloser{buf: buf}).(*ChunkedWriter)
 
 	s.Require().NoError(cw.encodeTrailers())
 	s.Equal(expected, buf.Bytes())
@@ -314,7 +314,7 @@ func (s *ChunkedWriterTestSuite) TestEncodeTrailersNil() {
 
 func TestReadLine(t *testing.T) {
 	line := []byte("hello\r\n")
-	result, err := readLine(bufio.NewReader(bytes.NewReader(line)))
+	result, err := readLine(iolib.NewUntilReader(bytes.NewReader(line)))
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("hello"), result)
 }

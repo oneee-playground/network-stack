@@ -1,13 +1,12 @@
 package transfer
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"math/big"
 	"network-stack/application/http"
 	"network-stack/application/util/rule"
-	byteslib "network-stack/lib/bytes"
+	iolib "network-stack/lib/io"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -19,18 +18,35 @@ type Chunk struct {
 	data       io.Reader
 }
 
-type chunkedCoderFactory struct{}
+type chunkedCoder struct{}
 
-var _ (CoderFactory) = (*chunkedCoderFactory)(nil)
+var _ (Coder) = (*chunkedCoder)(nil)
 
-func NewChuknedCoderFactory() *chunkedCoderFactory { return &chunkedCoderFactory{} }
+func NewChunkedCoder() *chunkedCoder { return &chunkedCoder{} }
 
-func (f *chunkedCoderFactory) Coding() Coding                            { return CodingChunked }
-func (f *chunkedCoderFactory) NewReader(r io.Reader) io.Reader           { return NewChunkedReader(r) }
-func (f *chunkedCoderFactory) NewWriter(w io.WriteCloser) io.WriteCloser { return NewChunkedWriter(w) }
+func (f *chunkedCoder) Coding() Coding { return CodingChunked }
+
+// NewChunkedReader converts chunked http message into byte stream.
+// if trailerStore is not nil, it will be filled on last Read.
+func (f *chunkedCoder) NewReader(r io.Reader) io.Reader {
+	cr := &ChunkedReader{crlfDump: make([]byte, 2)}
+	if ur, ok := r.(*iolib.UntilReader); ok {
+		cr.r = ur
+	} else {
+		cr.r = iolib.NewUntilReader(r)
+	}
+	return cr
+}
+
+func (f *chunkedCoder) NewWriter(w io.WriteCloser) io.WriteCloser {
+	return &ChunkedWriter{
+		w:         w,
+		headerBuf: bytes.NewBuffer(nil),
+	}
+}
 
 type ChunkedReader struct {
-	br       *bufio.Reader
+	r        *iolib.UntilReader
 	chunk    *Chunk
 	read     uint // reset for each chunk
 	crlfDump []byte
@@ -39,18 +55,6 @@ type ChunkedReader struct {
 }
 
 var _ io.Reader = (*ChunkedReader)(nil)
-
-// NewChunkedReader converts chunked http message into byte stream.
-// if trailerStore is not nil, it will be filled on last Read.
-func NewChunkedReader(r io.Reader) *ChunkedReader {
-	cr := &ChunkedReader{crlfDump: make([]byte, 2)}
-	if br, ok := r.(*bufio.Reader); ok {
-		cr.br = br
-	} else {
-		cr.br = bufio.NewReader(r)
-	}
-	return cr
-}
 
 func (cr *ChunkedReader) SetOnTrailerReceived(onTrailerReceived func([]http.Field)) {
 	cr.onTrailerReceived = onTrailerReceived
@@ -105,7 +109,7 @@ func (cr *ChunkedReader) Read(b []byte) (int, error) {
 }
 
 func (cr *ChunkedReader) decodeChunk() error {
-	line, err := readLine(cr.br)
+	line, err := readLine(cr.r)
 	if err != nil {
 		return err
 	}
@@ -136,7 +140,7 @@ func (cr *ChunkedReader) decodeChunk() error {
 	cr.chunk = &Chunk{
 		Size:       chunkSize,
 		Extensions: extensions,
-		data:       cr.br,
+		data:       cr.r,
 	}
 
 	return nil
@@ -161,7 +165,7 @@ func decodeChunkSize(b []byte) (uint, error) {
 func (cr *ChunkedReader) decodeTrailers() error {
 	fields := make([]http.Field, 0)
 	for {
-		line, err := readLine(cr.br)
+		line, err := readLine(cr.r)
 		if err != nil {
 			return errors.Wrap(err, "reading line")
 		}
@@ -196,13 +200,6 @@ type ChunkedWriter struct {
 }
 
 var _ io.WriteCloser = (*ChunkedWriter)(nil)
-
-func NewChunkedWriter(w io.WriteCloser) *ChunkedWriter {
-	return &ChunkedWriter{
-		w:         w,
-		headerBuf: bytes.NewBuffer(nil),
-	}
-}
 
 func (cw *ChunkedWriter) SetSendTrailers(sendTrailers func() []http.Field) {
 	cw.sendTrailers = sendTrailers
@@ -250,7 +247,7 @@ func (cw *ChunkedWriter) Close() error {
 		return errors.Wrap(err, "encoding trailers")
 	}
 
-	return nil
+	return cw.w.Close()
 }
 
 func (cw *ChunkedWriter) encodeChunk(chunk Chunk) (n int, err error) {
@@ -279,7 +276,7 @@ func (cw *ChunkedWriter) encodeChunk(chunk Chunk) (n int, err error) {
 
 	n64, err := io.Copy(cw.w, r)
 	if err != nil {
-		return n, errors.Wrap(err, "writing data")
+		return 0, errors.Wrap(err, "writing data")
 	}
 
 	return int(n64) - len(rule.CRLF), nil
@@ -303,8 +300,8 @@ func (cw *ChunkedWriter) encodeTrailers() error {
 }
 
 // readLine reads until CRLF and cuts it.
-func readLine(br *bufio.Reader) (line []byte, err error) {
-	line, err = byteslib.ReadUntil(br, rule.CRLF)
+func readLine(ur *iolib.UntilReader) (line []byte, err error) {
+	line, err = ur.ReadUntil(rule.CRLF)
 	if err != nil {
 		return nil, err
 	}
