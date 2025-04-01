@@ -470,13 +470,14 @@ func TestParsePort(t *testing.T) {
 			hasPort: true,
 		},
 		{
-			desc:    "no colon delim",
-			input:   "45",
-			wantErr: true,
-		},
-		{
 			desc:    "no digit after colon",
 			input:   ":",
+			port:    0,
+			hasPort: false,
+		},
+		{
+			desc:    "no colon delim",
+			input:   "45",
 			wantErr: true,
 		},
 		{
@@ -493,7 +494,7 @@ func TestParsePort(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			port, hasPort, err := parsePort(tc.input)
+			port, hasPort, err := ParsePort(tc.input)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return

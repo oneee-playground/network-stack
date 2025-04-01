@@ -100,7 +100,7 @@ func assertValidScheme(scheme string) error {
 	return nil
 }
 
-func assertValidHost(host string) error {
+func AssertValidHost(host string) error {
 	if host == "" {
 		// Empty value for reg-name is valid.
 		// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.2

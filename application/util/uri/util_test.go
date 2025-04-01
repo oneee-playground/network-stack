@@ -113,7 +113,7 @@ func TestAssertValidHost(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.desc, func(t *testing.T) {
-			err := assertValidHost(tc.input)
+			err := AssertValidHost(tc.input)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return

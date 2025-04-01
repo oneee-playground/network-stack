@@ -38,7 +38,7 @@ func (u *URI) IsValid() error {
 		if valid := isValidUserInfo(u.Authority.UserInfo); !valid {
 			return errors.New("userinfo is not valid")
 		}
-		if err := assertValidHost(u.Authority.Host); err != nil {
+		if err := AssertValidHost(u.Authority.Host); err != nil {
 			return errors.Wrap(err, "host is not valid")
 		}
 	}
@@ -264,7 +264,7 @@ func parseAuthority(raw string) (authority Authority, err error) {
 		return Authority{}, errors.Wrap(err, "parsing host")
 	}
 
-	port, hasPort, err := parsePort(portPart)
+	port, hasPort, err := ParsePort(portPart)
 	if err != nil {
 		return Authority{}, errors.Wrap(err, "parsing host")
 	}
@@ -300,15 +300,19 @@ func getHostPort(raw string) (host string, portPart string, err error) {
 		}
 	}
 
-	if err := assertValidHost(host); err != nil {
+	if err := AssertValidHost(host); err != nil {
 		return "", "", errors.Wrap(err, "host is not valid")
 	}
 
 	return host, portPart, nil
 }
 
+// Parseport parses uint16 port from given string.
+// String must either start with ':' or be empty.
+// Digists after ':' can be empty, in this case, it has no port.
 // This is not the same rule as RFC. See [Authority].
-func parsePort(s string) (port uint16, hasPort bool, err error) {
+// Reference: https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.3
+func ParsePort(s string) (port uint16, hasPort bool, err error) {
 	if s == "" {
 		return 0, false, nil
 	}
@@ -318,6 +322,10 @@ func parsePort(s string) (port uint16, hasPort bool, err error) {
 	}
 
 	s = s[1:]
+
+	if s == "" {
+		return 0, false, nil
+	}
 
 	n, err := strconv.ParseUint(s, 10, 16)
 	if err != nil {
