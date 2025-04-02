@@ -55,6 +55,17 @@ func TestMiddlewareReader(t *testing.T) {
 			expected: bytes.Repeat([]byte("BCD"), N),
 		},
 		{
+			desc: "example (close write)",
+			onWrite: func(w io.Writer, p []byte) error {
+				return nil
+			},
+			onClose: func(w io.Writer) error {
+				_, err := w.Write([]byte("DEFG"))
+				return err
+			},
+			expected: append(bytes.Repeat([]byte("ABC"), N), []byte("DEFG")...),
+		},
+		{
 			desc: "write err",
 			onWrite: func(w io.Writer, p []byte) error {
 				return errors.New("hey")

@@ -11,6 +11,8 @@ type MiddlewareReader struct {
 	src  io.Reader
 	buf  *bytes.Buffer
 	bufw io.WriteCloser
+
+	srcEOF bool
 }
 
 func NewMiddlewareReader(
@@ -25,7 +27,7 @@ func NewMiddlewareReader(
 }
 
 func (mr *MiddlewareReader) Read(p []byte) (n int, err error) {
-	if mr.buf.Len() == 0 {
+	if mr.buf.Len() == 0 && !mr.srcEOF {
 		n, err := mr.src.Read(p)
 		if err != nil && err != io.EOF {
 			return 0, errors.Wrap(err, "reading from source")
@@ -40,6 +42,7 @@ func (mr *MiddlewareReader) Read(p []byte) (n int, err error) {
 		}
 
 		if err == io.EOF {
+			mr.srcEOF = true
 			if err := mr.bufw.Close(); err != nil {
 				return 0, errors.Wrap(err, "failed to close middleware")
 			}
