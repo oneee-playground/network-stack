@@ -50,6 +50,27 @@ func TestCreateMessage(t *testing.T) {
 	})
 }
 
+func TestMessageEnsureHeadersSet(t *testing.T) {
+	one := uint(1)
+	msg := Message{
+		ContentLength:    &one,
+		TransferEncoding: []transfer.Coding{transfer.CodingChunked},
+	}
+
+	msg.EnsureHeadersSet()
+
+	assert.NotNil(t, msg.Headers.underlying)
+
+	v, ok := msg.Headers.Get("Content-Length")
+	assert.True(t, ok)
+	assert.Equal(t, "1", v)
+
+	v, ok = msg.Headers.Get("Transfer-Encoding")
+	assert.True(t, ok)
+	assert.Equal(t, "chunked", v)
+
+}
+
 func TestAssertHeaderContains(t *testing.T) {
 	h := NewHeaders(map[string][]string{
 		"foo": {"bar"},

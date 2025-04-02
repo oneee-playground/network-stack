@@ -75,6 +75,10 @@ func (m *Message) IsChunked() bool {
 }
 
 func (m *Message) EnsureHeadersSet() {
+	if m.Headers.underlying == nil {
+		m.Headers = NewHeaders(nil)
+	}
+
 	if m.ContentLength != nil {
 		m.Headers.Set("Content-Length", strconv.FormatUint(uint64(*m.ContentLength), 10))
 	}
