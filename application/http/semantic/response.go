@@ -3,6 +3,7 @@ package semantic
 import (
 	"network-stack/application/http"
 	"network-stack/application/http/semantic/status"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -12,6 +13,7 @@ type Response struct {
 	raw *http.Response
 
 	Status status.Status
+	Date   time.Time
 }
 
 type ParseResponseOptions struct {
@@ -24,20 +26,24 @@ func ResponseFrom(raw *http.Response, opts ParseResponseOptions) (*Response, err
 		Status: status.Status{Code: raw.StatusCode, ReasonPhrase: raw.ReasonPhrase},
 	}
 
-	response.Headers = HeadersFrom(raw.Headers, opts.CombineFieldValues)
-	if err := assertHeaderContains(response.Headers, opts.RequiredFields); err != nil {
-		return nil, errors.Wrap(err, "header has missing fields")
-	}
-
-	response.Body = raw.Body
-
 	var err error
 	response.Message, err = createMessage(raw.Version, raw.Headers, raw.Body, opts.ParseMessageOptions)
 	if err != nil {
 		return nil, err
 	}
 
+	response.Date, err = extractDate(response.Headers)
+	if err != nil {
+		return nil, errors.Wrap(err, "extracting date")
+	}
+
 	return &response, nil
+}
+
+func (r *Response) EnsureHeadersSet() {
+	r.Message.EnsureHeadersSet()
+
+	r.Headers.Set("Date", r.Date.Format(imfFixDateFormat))
 }
 
 func (r *Response) RawResponse() http.Response {
@@ -56,4 +62,13 @@ func (r *Response) RawResponse() http.Response {
 	}
 
 	return res
+}
+
+func extractDate(h Headers) (time.Time, error) {
+	v, ok := h.Get("Date")
+	if !ok {
+		return time.Time{}, nil
+	}
+
+	return ParseDate(v)
 }

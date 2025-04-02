@@ -26,18 +26,22 @@ type ParseRequestOptions struct {
 }
 
 func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) {
-	var err error
-
 	request := Request{
 		raw:    raw,
 		Method: Method(raw.Method),
 	}
 
+	var err error
 	request.Message, err = createMessage(
 		raw.Version, raw.Headers, raw.Body, opts.ParseMessageOptions,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	request.Host, err = extractHost(request.Headers)
+	if err != nil {
+		return nil, errors.Wrap(err, "extracting host")
 	}
 
 	request.URI, err = parseAndValidateURI(
@@ -67,6 +71,12 @@ func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) 
 	return &request, nil
 }
 
+func (r *Request) EnsureHeadersSet() {
+	r.Message.EnsureHeadersSet()
+
+	r.Headers.Set("Host", r.Host)
+}
+
 func (r *Request) RawRequest() http.Request {
 	if r.raw != nil {
 		return *r.raw
@@ -83,6 +93,19 @@ func (r *Request) RawRequest() http.Request {
 	}
 
 	return req
+}
+
+func extractHost(h Headers) (string, error) {
+	v, ok := h.Get("Host")
+	if !ok {
+		return "", nil
+	}
+
+	if err := uri.AssertValidHost(v); err != nil {
+		return "", errors.Wrap(err, "host value is not valid")
+	}
+
+	return v, nil
 }
 
 var ErrURITooLong = errors.New("uri too long")
