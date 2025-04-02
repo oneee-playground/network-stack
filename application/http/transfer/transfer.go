@@ -48,7 +48,7 @@ func (cp *CodingPipeliner) Decode(r io.Reader, codings []Coding, onTrailer func(
 		if coding != CodingChunked {
 			continue
 		}
-		if idx != len(coding)-1 {
+		if idx != len(codings)-1 {
 			return nil, errors.New("chunked encoding should be the last encoding")
 		}
 
