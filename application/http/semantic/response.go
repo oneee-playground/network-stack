@@ -10,7 +10,6 @@ import (
 
 type Response struct {
 	Message
-	raw *http.Response
 
 	Status status.Status
 	Date   time.Time
@@ -22,7 +21,6 @@ type ParseResponseOptions struct {
 
 func ResponseFrom(raw *http.Response, opts ParseResponseOptions) (*Response, error) {
 	response := Response{
-		raw:    raw,
 		Status: status.Status{Code: raw.StatusCode, ReasonPhrase: raw.ReasonPhrase},
 	}
 
@@ -47,10 +45,6 @@ func (r *Response) EnsureHeadersSet() {
 }
 
 func (r *Response) RawResponse() http.Response {
-	if r.raw != nil {
-		return *r.raw
-	}
-
 	res := http.Response{
 		StatusLine: http.StatusLine{
 			Version:      r.Version,

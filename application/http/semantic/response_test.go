@@ -27,7 +27,6 @@ func TestResponseFrom(t *testing.T) {
 
 	// Also test Host header is overwritten by absolute uri.
 	expected := &Response{
-		raw:    &raw,
 		Status: status.OK,
 		Message: Message{
 			Version: raw.Version,
@@ -47,6 +46,5 @@ func TestResponseFrom(t *testing.T) {
 	assert.Equal(t, expected, response)
 
 	// Also test RawResponse.
-	response.raw = nil
 	assert.Equal(t, raw, response.RawResponse())
 }

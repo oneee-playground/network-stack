@@ -78,10 +78,6 @@ func (r *Request) EnsureHeadersSet() {
 }
 
 func (r *Request) RawRequest() http.Request {
-	if r.raw != nil {
-		return *r.raw
-	}
-
 	req := http.Request{
 		RequestLine: http.RequestLine{
 			Method:  string(r.Method),
