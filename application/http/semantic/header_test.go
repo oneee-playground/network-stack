@@ -149,7 +149,7 @@ func TestHeaderValues(t *testing.T) {
 }
 
 func TestHeaderSet(t *testing.T) {
-	h := NewHeaders(nil)
+	h := Headers{}
 
 	h.Set("key", "value")
 	v, ok := h.underlying["Key"]
@@ -163,7 +163,7 @@ func TestHeaderSet(t *testing.T) {
 }
 
 func TestHeaderAdd(t *testing.T) {
-	h := NewHeaders(nil)
+	h := Headers{}
 
 	h.Add("key", "value")
 	v, ok := h.underlying["Key"]

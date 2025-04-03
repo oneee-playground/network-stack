@@ -91,10 +91,18 @@ func (h *Headers) Values(key string) (values []string, ok bool) {
 // It overwrites existing value instead of appending to it.
 // For list-based field, use [Headers.Add].
 func (h *Headers) Set(key, value string) {
+	if h.underlying == nil {
+		h.underlying = make(map[string][]string)
+	}
+
 	h.underlying[h.canonical(key)] = []string{value}
 }
 
 func (h *Headers) Add(key, value string) {
+	if h.underlying == nil {
+		h.underlying = make(map[string][]string)
+	}
+
 	key = h.canonical(key)
 	h.underlying[key] = append(h.underlying[key], value)
 }
