@@ -8,11 +8,13 @@ import (
 )
 
 func TestParseDate(t *testing.T) {
-	expected := time.Date(1994, 11, 6, 8, 49, 37, 0, time.UTC)
+	tz := time.FixedZone("GMT", 0)
+	expected := time.Date(1994, 11, 6, 8, 49, 37, 0, tz)
 
 	testcases := []struct {
 		desc    string
 		input   string
+		useTz   *time.Location
 		wantErr bool
 	}{
 		{
@@ -24,8 +26,11 @@ func TestParseDate(t *testing.T) {
 			input: "Sunday, 06-Nov-94 08:49:37 GMT",
 		},
 		{
+			// It has no timezone info.
+			// So we'll manually add it in loop below.
 			desc:  "ANSI C's asctime() format",
 			input: "Sun Nov  6 08:49:37 1994",
+			useTz: tz,
 		},
 		{
 			desc:    "datetime",
@@ -40,6 +45,10 @@ func TestParseDate(t *testing.T) {
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
+			}
+
+			if tc.useTz != nil {
+				tm = tm.In(tc.useTz)
 			}
 
 			assert.NoError(t, err)

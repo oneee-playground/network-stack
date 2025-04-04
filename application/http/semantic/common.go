@@ -38,11 +38,11 @@ func DefaultSafeMethods() []Method {
 
 const (
 	// Preferred format: IMF-fixdate
-	imfFixDateFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+	imfFixDateFormat = time.RFC1123
 	// Obsolete RFC 850 format
-	rfc850DateFormat = "Monday, 02-Jan-06 15:04:05 GMT"
+	rfc850DateFormat = time.RFC850
 	// Obsolete asctime format
-	asctimeDateFormat = "Mon Jan _2 15:04:05 2006"
+	asctimeDateFormat = time.ANSIC
 )
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.7
