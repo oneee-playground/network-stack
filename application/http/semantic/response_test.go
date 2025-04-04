@@ -26,7 +26,7 @@ func TestResponseFrom(t *testing.T) {
 	}
 
 	// Also test Host header is overwritten by absolute uri.
-	expected := &Response{
+	expected := Response{
 		Status: status.OK,
 		Message: Message{
 			Version: raw.Version,
@@ -40,7 +40,7 @@ func TestResponseFrom(t *testing.T) {
 		},
 	}
 
-	response, err := ResponseFrom(&raw, ParseResponseOptions{})
+	response, err := ResponseFrom(raw, ParseResponseOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, expected, response)

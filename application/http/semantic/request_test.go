@@ -26,7 +26,7 @@ func TestRequestFrom(t *testing.T) {
 	}
 
 	// Also test Host header is overwritten by absolute uri.
-	expected := &Request{
+	expected := Request{
 		Method: MethodGet,
 		URI: uri.URI{
 			Scheme:    "http",
@@ -46,7 +46,7 @@ func TestRequestFrom(t *testing.T) {
 		},
 	}
 
-	request, err := RequestFrom(&raw, ParseRequestOptions{})
+	request, err := RequestFrom(raw, ParseRequestOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, expected, request)

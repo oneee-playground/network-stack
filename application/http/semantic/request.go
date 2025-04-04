@@ -24,7 +24,7 @@ type ParseRequestOptions struct {
 	MaxURILen      uint
 }
 
-func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) {
+func RequestFrom(raw http.Request, opts ParseRequestOptions) (Request, error) {
 	request := Request{
 		Method: Method(raw.Method),
 	}
@@ -34,19 +34,19 @@ func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) 
 		raw.Version, raw.Headers, raw.Body, opts.ParseMessageOptions,
 	)
 	if err != nil {
-		return nil, err
+		return Request{}, err
 	}
 
 	request.Host, err = extractHost(request.Headers)
 	if err != nil {
-		return nil, errors.Wrap(err, "extracting host")
+		return Request{}, errors.Wrap(err, "extracting host")
 	}
 
 	request.URI, err = parseAndValidateURI(
 		raw.Target, request.Method, opts.IsForwardProxy, opts.MaxURILen,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse URI")
+		return Request{}, errors.Wrap(err, "failed to parse URI")
 	}
 
 	if !(request.Method == MethodOptions || request.Method == MethodConnect) {
@@ -66,7 +66,7 @@ func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) 
 		request.Host = host
 	}
 
-	return &request, nil
+	return request, nil
 }
 
 func (r *Request) EnsureHeadersSet() {
@@ -75,7 +75,7 @@ func (r *Request) EnsureHeadersSet() {
 	r.Headers.Set("Host", r.Host)
 }
 
-func (r *Request) RawRequest() http.Request {
+func (r Request) RawRequest() http.Request {
 	req := http.Request{
 		RequestLine: http.RequestLine{
 			Method:  string(r.Method),

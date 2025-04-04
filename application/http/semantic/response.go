@@ -19,7 +19,7 @@ type ParseResponseOptions struct {
 	ParseMessageOptions
 }
 
-func ResponseFrom(raw *http.Response, opts ParseResponseOptions) (*Response, error) {
+func ResponseFrom(raw http.Response, opts ParseResponseOptions) (Response, error) {
 	response := Response{
 		Status: status.Status{Code: raw.StatusCode, ReasonPhrase: raw.ReasonPhrase},
 	}
@@ -27,15 +27,15 @@ func ResponseFrom(raw *http.Response, opts ParseResponseOptions) (*Response, err
 	var err error
 	response.Message, err = createMessage(raw.Version, raw.Headers, raw.Body, opts.ParseMessageOptions)
 	if err != nil {
-		return nil, err
+		return Response{}, err
 	}
 
 	response.Date, err = extractDate(response.Headers)
 	if err != nil {
-		return nil, errors.Wrap(err, "extracting date")
+		return Response{}, errors.Wrap(err, "extracting date")
 	}
 
-	return &response, nil
+	return response, nil
 }
 
 func (r *Response) EnsureHeadersSet() {
@@ -44,7 +44,7 @@ func (r *Response) EnsureHeadersSet() {
 	r.Headers.Set("Date", r.Date.Format(imfFixDateFormat))
 }
 
-func (r *Response) RawResponse() http.Response {
+func (r Response) RawResponse() http.Response {
 	res := http.Response{
 		StatusLine: http.StatusLine{
 			Version:      r.Version,
