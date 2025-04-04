@@ -7,6 +7,8 @@ import (
 	"network-stack/transport"
 	"sync"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 type pipe struct {
@@ -17,6 +19,8 @@ type pipe struct {
 
 	closed chan struct{}
 	once   sync.Once // making sure not to close closed channel.
+
+	clock clock.Clock
 
 	rdeadLine *deadLine
 	wdeadLine *deadLine
@@ -38,21 +42,23 @@ func (p pipeAddr) String() string            { return p.name }
 var _ transport.Addr = pipeAddr{}
 var _ transport.Conn = (*pipe)(nil)
 
-func NewPair(name1, name2 string) (c1, c2 *pipe) {
+func NewPair(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
 	c1 = &pipe{
 		stream:    make(chan []byte),
 		nc:        make(chan int),
 		closed:    make(chan struct{}),
-		rdeadLine: newDeadLine(),
-		wdeadLine: newDeadLine(),
+		clock:     clock,
+		rdeadLine: newDeadLine(clock),
+		wdeadLine: newDeadLine(clock),
 		addr:      pipeAddr{name: name1},
 	}
 	c2 = &pipe{
 		stream:    make(chan []byte),
 		nc:        make(chan int),
 		closed:    make(chan struct{}),
-		rdeadLine: newDeadLine(),
-		wdeadLine: newDeadLine(),
+		clock:     clock,
+		rdeadLine: newDeadLine(clock),
+		wdeadLine: newDeadLine(clock),
 		addr:      pipeAddr{name: name2},
 	}
 	c1.counterpart, c2.counterpart = c2, c1
@@ -140,14 +146,19 @@ func (p *pipe) SetReadDeadLine(t time.Time)  { p.rdeadLine.set(t) }
 func (p *pipe) SetWriteDeadLine(t time.Time) { p.wdeadLine.set(t) }
 
 type deadLine struct {
-	t *time.Timer
+	clock clock.Clock
+
+	t *clock.Timer
 	m sync.Mutex
 
 	closed chan struct{}
 }
 
-func newDeadLine() *deadLine {
-	return &deadLine{closed: make(chan struct{})}
+func newDeadLine(clock clock.Clock) *deadLine {
+	return &deadLine{
+		clock:  clock,
+		closed: make(chan struct{}),
+	}
 }
 
 func (d *deadLine) set(t time.Time) {
@@ -169,7 +180,7 @@ func (d *deadLine) set(t time.Time) {
 		return
 	}
 
-	d.t = time.AfterFunc(time.Until(t), func() {
+	d.t = d.clock.AfterFunc(d.clock.Until(t), func() {
 		close(d.closed)
 	})
 }

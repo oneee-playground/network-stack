@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/goleak"
 )
@@ -13,6 +14,7 @@ import (
 type ConnTestSuite struct {
 	suite.Suite
 	C1, C2 transport.Conn
+	Clock  clock.Clock
 
 	done  chan struct{}
 	timer *time.Timer
@@ -20,6 +22,8 @@ type ConnTestSuite struct {
 
 func (s *ConnTestSuite) SetupTest() {
 	s.done = make(chan struct{})
+	s.Clock = clock.New() // Use real-time timer for now.
+
 	s.timer = time.AfterFunc(time.Second, func() {
 		select {
 		case <-s.done:
@@ -139,7 +143,7 @@ func (s *ConnTestSuite) TestClose() {
 	go func() {
 		defer wg.Done()
 		select {
-		case <-time.After(time.Second):
+		case <-s.Clock.After(time.Second):
 			s.FailNow("timeout exceeded")
 		case <-done:
 		}
@@ -149,7 +153,7 @@ func (s *ConnTestSuite) TestClose() {
 }
 
 func (s *ConnTestSuite) TestReadDeadLine() {
-	s.C1.SetReadDeadLine(time.Now().Add(-time.Second))
+	s.C1.SetReadDeadLine(s.Clock.Now().Add(-time.Second))
 
 	b := make([]byte, 1)
 	n, err := s.C1.Read(b)
@@ -158,7 +162,7 @@ func (s *ConnTestSuite) TestReadDeadLine() {
 }
 
 func (s *ConnTestSuite) TestWriteDeadLine() {
-	s.C1.SetWriteDeadLine(time.Now().Add(-time.Second))
+	s.C1.SetWriteDeadLine(s.Clock.Now().Add(-time.Second))
 
 	b := make([]byte, 1)
 	n, err := s.C1.Write(b)
