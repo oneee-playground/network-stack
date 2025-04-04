@@ -10,7 +10,6 @@ import (
 
 type Request struct {
 	Message
-	raw *http.Request
 
 	Method Method
 	URI    uri.URI
@@ -27,7 +26,6 @@ type ParseRequestOptions struct {
 
 func RequestFrom(raw *http.Request, opts ParseRequestOptions) (*Request, error) {
 	request := Request{
-		raw:    raw,
 		Method: Method(raw.Method),
 	}
 

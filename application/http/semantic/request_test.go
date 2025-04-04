@@ -27,7 +27,6 @@ func TestRequestFrom(t *testing.T) {
 
 	// Also test Host header is overwritten by absolute uri.
 	expected := &Request{
-		raw:    &raw,
 		Method: MethodGet,
 		URI: uri.URI{
 			Scheme:    "http",
@@ -53,7 +52,6 @@ func TestRequestFrom(t *testing.T) {
 	assert.Equal(t, expected, request)
 
 	// Also test RawRequest.
-	request.raw = nil
 	raw.Headers[0].Value = []byte("localhost") // as this field is overwritten.
 
 	assert.Equal(t, raw, request.RawRequest())
