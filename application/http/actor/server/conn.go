@@ -46,6 +46,7 @@ func (c *conn) start(ctx context.Context) {
 		}
 	}()
 
+	var altHandler AltHandler
 	var err error
 	switch {
 	case c.isV2():
@@ -54,10 +55,14 @@ func (c *conn) start(ctx context.Context) {
 		return
 	case c.opts.Pipeline.BufferLength > 0:
 		// I hate pipelining.
-		// TODO: implement it
-		return
+		altHandler, err = c.servePipeine(ctx)
 	default:
-		err = c.serve(ctx)
+		altHandler, err = c.serve(ctx)
+	}
+
+	if altHandler != nil {
+		httpConn := &httpWrappedConn{conn: c.con, r: c.r, w: c.w}
+		err = serveAltHandler(ctx, httpConn, altHandler)
 	}
 
 	switch {
@@ -72,16 +77,17 @@ func (c *conn) start(ctx context.Context) {
 	}
 }
 
-func (c *conn) serve(ctx context.Context) (err error) {
+func (c *conn) serve(ctx context.Context) (AltHandler, error) {
 	dec := http.NewRequestDecoder(c.r, c.opts.Serve.Decode)
 	enc := http.NewResponseEncoder(c.w, c.opts.Serve.Encode)
 
 	loop := true
+
 	var altHandler AltHandler
 
 	for loop {
 		if err := c.waitForRequest(ctx); err != nil {
-			return errors.Wrap(err, "error while waiting for request")
+			return nil, errors.Wrap(err, "error while waiting for request")
 		}
 
 		var response *semantic.Response
@@ -89,8 +95,9 @@ func (c *conn) serve(ctx context.Context) (err error) {
 		request, err := c.readRequest(dec)
 		if err != nil {
 			if errors.Is(err, transport.ErrConnClosed) {
-				return err
+				return nil, err
 			}
+			// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-2.2-9
 			response = statusErrToResponse(toStatusError(err), true)
 			loop = false
 		} else {
@@ -102,7 +109,7 @@ func (c *conn) serve(ctx context.Context) (err error) {
 			}
 			response, err = hctx.doHandle(c.handle)
 			if err != nil {
-				return errors.Wrap(err, "unexpected error while handling request")
+				return nil, errors.Wrap(err, "unexpected error while handling request")
 			}
 
 			if hctx.closeConn {
@@ -122,20 +129,12 @@ func (c *conn) serve(ctx context.Context) (err error) {
 		// Overwrite response version.
 		response.Message.Version = c.version
 
-		err = c.writeResponse(response, enc)
-		if err != nil {
-			if errors.Is(err, transport.ErrConnClosed) {
-				return err
-			}
+		if err = c.writeResponse(response, enc); err != nil {
+			return nil, errors.Wrap(err, "unexpected error while writing response")
 		}
 	}
 
-	if altHandler != nil {
-		httpConn := &httpWrappedConn{conn: c.con, r: c.r, w: c.w}
-		return serveAltHandler(ctx, httpConn, altHandler)
-	}
-
-	return nil
+	return altHandler, nil
 }
 
 var ErrIdleTimeoutExceeded = errors.New("idle timeout exceeded")

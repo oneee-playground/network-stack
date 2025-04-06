@@ -98,8 +98,9 @@ func (s *ServeTestSuite) TestServeOnce() {
 
 	s.conn.opts.Serve.Timeout.IdleTimeout = timeout
 
-	err := s.conn.serve(s.ctx)
+	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
+	s.Nil(alt)
 }
 
 func (s *ServeTestSuite) TestServeConsecutive() {
@@ -121,8 +122,9 @@ func (s *ServeTestSuite) TestServeConsecutive() {
 
 	s.conn.opts.Serve.Timeout.IdleTimeout = timeout
 
-	err := s.conn.serve(s.ctx)
+	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
+	s.Nil(alt)
 }
 
 func (s *ServeTestSuite) TestServeGracefulClose() {
@@ -155,7 +157,9 @@ func (s *ServeTestSuite) TestServeGracefulClose() {
 		s.Require().Equal(expected, got)
 	}()
 
-	s.NoError(s.conn.serve(s.ctx))
+	alt, err := s.conn.serve(s.ctx)
+	s.NoError(err)
+	s.Nil(alt)
 	wg.Wait()
 }
 
@@ -176,7 +180,10 @@ func (s *ServeTestSuite) TestServeForceClose() {
 		s.Zero(res)
 	}()
 
-	s.NoError(s.conn.serve(s.ctx))
+	alt, err := s.conn.serve(s.ctx)
+	s.NoError(err)
+	s.Nil(alt)
+
 	s.conn.con.Close()
 	wg.Wait()
 }
@@ -215,8 +222,9 @@ func (s *ServeTestSuite) TestInvalidRequest() {
 		s.Equal(expected, response)
 	}()
 
-	err := s.conn.serve(s.ctx)
+	alt, err := s.conn.serve(s.ctx)
 	s.NoError(err)
+	s.Nil(alt)
 
 	wg.Wait()
 }
@@ -234,8 +242,9 @@ func (s *ServeTestSuite) TestConnClosedOnReading() {
 		s.Require().NoError(s.otherConn.Close())
 	}()
 
-	err := s.conn.serve(s.ctx)
+	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, transport.ErrConnClosed)
+	s.Nil(alt)
 
 	wg.Wait()
 }
@@ -252,8 +261,9 @@ func (s *ServeTestSuite) TestConnClosedOnWriting() {
 		s.Require().NoError(s.otherConn.Close())
 	}()
 
-	err := s.conn.serve(s.ctx)
+	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, transport.ErrConnClosed)
+	s.Nil(alt)
 
 	wg.Wait()
 }
