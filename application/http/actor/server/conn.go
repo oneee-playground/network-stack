@@ -181,20 +181,12 @@ func (c *conn) readRequest(d *http.RequestDecoder) (*semantic.Request, error) {
 		return nil, errors.Wrap(err, "failed to create a semantic request")
 	}
 
-	if len(request.TransferEncoding) > 0 {
-		var err error
-		request.Body, err = c.transfer.Decode(request.Body, request.TransferEncoding,
-			func(f []http.Field) {
-				// On chukned transfer's trailer is received,
-				// parse it and assign it to request's trailers.
-				opts := c.opts.Serve.Parse
-				trailers := semantic.HeadersFrom(f, opts.CombineFieldValues)
-				request.Trailers = &trailers
-			},
-		)
-		if err != nil {
-			// Could be [transfer.ErrUnsupportedCoding]
-			return nil, errors.Wrap(err, "applying transfer coding to body")
+	switch {
+	case len(request.TransferEncoding) > 0:
+		combineFieldValues := c.opts.Serve.Parse.CombineFieldValues
+
+		if err := request.DecodeTransfer(c.transfer, combineFieldValues); err != nil {
+			return nil, err
 		}
 
 		if request.IsChunked() {
@@ -205,13 +197,12 @@ func (c *conn) readRequest(d *http.RequestDecoder) (*semantic.Request, error) {
 			// The message body length cannot be determined reliably.
 			// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-6.3-2.4.3
 			return nil, errors.New("transfer encoding without chunked. cannot determine body length")
-
 		}
-	} else if request.ContentLength != nil {
+	case request.ContentLength != nil:
 		// Body is delimited by Content-Length.
 		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-6.3-2.6
 		request.Body = iolib.LimitReader(request.Body, *request.ContentLength)
-	} else {
+	default:
 		// Neither transfer-encoding nor content-length exists.
 		// So it has no body.
 		// Reference: https://datatracker.ietf.org/doc/html/rfc9112#section-6.3-2.7
@@ -238,39 +229,15 @@ func (c *conn) writeResponse(response *semantic.Response, e *http.ResponseEncode
 		response.Body = bytes.NewReader(nil)
 	}
 
-	if len(response.TransferEncoding) > 0 {
-		var err error
-		response.Body = iolib.NewMiddlewareReader(response.Body,
-			func(wc io.WriteCloser) io.WriteCloser {
-				w, e := c.transfer.Encode(wc, response.TransferEncoding,
-					func() []http.Field {
-						// On chukned transfer's trailer is to be sent,
-						// If trailer exists, send it.
-						var trailers []http.Field
-						if response.Trailers != nil {
-							trailers = response.Trailers.ToRawFields()
-						}
-						return trailers
-					},
-				)
-
-				if e != nil {
-					// Give the error to the outside-func.
-					err = e
-					return nil
-				}
-
-				return w
-			},
-		)
-
-		if err != nil {
-			// Could be [transfer.ErrUnsupportedCoding]
-			// In this case, the user is stupid.
-			return errors.Wrap(err, "applying transfer coding to response")
+	switch {
+	case len(response.TransferEncoding) > 0:
+		if err := response.EncodeTransfer(c.transfer); err != nil {
+			return err
 		}
-	} else if response.ContentLength != nil {
-		response.Body = iolib.LimitReader(response.Body, *response.ContentLength)
+	case response.ContentLength != nil:
+		response.Body = iolib.LimitReader(
+			response.Body, *response.ContentLength,
+		)
 	}
 
 	if err := e.Encode(response.RawResponse()); err != nil {

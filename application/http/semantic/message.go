@@ -74,6 +74,60 @@ func (m *Message) IsChunked() bool {
 	return last == transfer.CodingChunked
 }
 
+func (m *Message) EncodeTransfer(t *transfer.CodingApplier) error {
+	var err error
+	body := iolib.NewMiddlewareReader(m.Body,
+		func(wc io.WriteCloser) io.WriteCloser {
+			w, e := t.Encode(wc, m.TransferEncoding,
+				func() []http.Field {
+					// On chukned transfer's trailer is to be sent,
+					// If trailer exists, send it.
+					var trailers []http.Field
+					if m.Trailers != nil {
+						trailers = m.Trailers.ToRawFields()
+					}
+					return trailers
+				},
+			)
+
+			if e != nil {
+				// Give the error to the outside-func.
+				err = e
+				return nil
+			}
+
+			return w
+		},
+	)
+
+	if err != nil {
+		// Could be [transfer.ErrUnsupportedCoding]
+		// In this case, the user is stupid.
+		return errors.Wrap(err, "applying transfer coding to body")
+	}
+
+	m.Body = body
+	return nil
+}
+
+func (m *Message) DecodeTransfer(t *transfer.CodingApplier, combineTrailerFields bool) error {
+	body, err := t.Decode(m.Body, m.TransferEncoding,
+		func(f []http.Field) {
+			// On chukned transfer's trailer is received,
+			// parse it and assign it to trailers.
+			trailers := HeadersFrom(f, combineTrailerFields)
+			m.Trailers = &trailers
+		},
+	)
+	if err != nil {
+		// Could be [transfer.ErrUnsupportedCoding]
+		return errors.Wrap(err, "applying transfer coding to body")
+	}
+
+	m.Body = body
+	return nil
+}
+
 func (m *Message) EnsureHeadersSet() {
 	if m.Headers.underlying == nil {
 		m.Headers = NewHeaders(nil)

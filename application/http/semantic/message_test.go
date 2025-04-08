@@ -71,6 +71,70 @@ func TestMessageEnsureHeadersSet(t *testing.T) {
 
 }
 
+func TestMessageEncodeTransfer(t *testing.T) {
+	content := "How's it going?"
+
+	message := Message{
+		TransferEncoding: []transfer.Coding{transfer.CodingChunked},
+		Body:             strings.NewReader(content),
+	}
+
+	expectedTrailers := NewHeaders(map[string][]string{"Foo": {"Bar"}})
+	message.Trailers = &expectedTrailers
+
+	// Applies chunked.
+	err := message.EncodeTransfer(transfer.NewCodingApplier(nil))
+	require.NoError(t, err)
+
+	trailers := []http.Field{}
+	r := transfer.NewChunkedCoder().NewReader(message.Body).(*transfer.ChunkedReader)
+	r.SetOnTrailerReceived(func(f []http.Field) {
+		trailers = f
+	})
+
+	b, err := io.ReadAll(r)
+	assert.NoError(t, err)
+	assert.Equal(t, content, string(b))
+
+	// Compare trailers.
+	assert.Equal(t, expectedTrailers, HeadersFrom(trailers, true))
+}
+
+func TestMessageDecodeTransfer(t *testing.T) {
+	content := "How's it going?"
+
+	message := Message{
+		TransferEncoding: []transfer.Coding{transfer.CodingChunked},
+		Body:             strings.NewReader(content),
+	}
+
+	expectedTrailers := NewHeaders(map[string][]string{"Foo": {"Bar"}})
+
+	// It is now encoded.
+	message.Body = iolib.NewMiddlewareReader(
+		message.Body,
+		func(wc io.WriteCloser) io.WriteCloser {
+			wc = transfer.NewChunkedCoder().NewWriter(wc)
+			cw := wc.(*transfer.ChunkedWriter)
+			cw.SetSendTrailers(func() []http.Field {
+				return expectedTrailers.ToRawFields()
+			})
+			return wc
+		},
+	)
+
+	err := message.DecodeTransfer(transfer.NewCodingApplier(nil), true)
+	require.NoError(t, err)
+
+	b, err := io.ReadAll(message.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, content, string(b))
+
+	// Compare trailers.
+	require.NotNil(t, message.Trailers)
+	assert.Equal(t, &expectedTrailers, message.Trailers)
+}
+
 func TestAssertHeaderContains(t *testing.T) {
 	h := NewHeaders(map[string][]string{
 		"foo": {"bar"},

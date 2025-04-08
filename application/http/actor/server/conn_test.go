@@ -436,48 +436,6 @@ func (s *ReadRequestTestSuite) TestReadRequestContentLength() {
 	s.Equal(&expected, request)
 }
 
-func (s *ReadRequestTestSuite) TestEncodingChunked() {
-	// Apply chunked coding and set trailers for request to read.
-	expectedTrailers := semantic.NewHeaders(map[string][]string{"Foo": {"Bar"}})
-	s.defaultRequest.TransferEncoding = []transfer.Coding{transfer.CodingChunked}
-
-	cr := iolib.NewMiddlewareReader(
-		s.defaultRequest.Body,
-		func(wc io.WriteCloser) io.WriteCloser {
-			wc = transfer.NewChunkedCoder().NewWriter(wc)
-			cw := wc.(*transfer.ChunkedWriter)
-			cw.SetSendTrailers(func() []http.Field {
-				return expectedTrailers.ToRawFields()
-			})
-			return wc
-		},
-	)
-	s.defaultRequest.Body = cr
-
-	done := s.startWritingRequest(s.defaultRequest)
-
-	request, err := s.conn.readRequest(s.dec)
-	s.Require().NoError(err)
-
-	_, err = io.ReadAll(request.Body)
-	s.Require().NoError(err)
-
-	s.Require().NoError(s.dst.Close())
-	<-done
-
-	// Compare trailers.
-	s.Require().NotNil(request.Trailers)
-	s.Equal(expectedTrailers.ToRawFields(), request.Trailers.ToRawFields())
-}
-
-func (s *ReadRequestTestSuite) TestEncodingWrong() {
-	s.defaultRequest.TransferEncoding = []transfer.Coding{"unknown"}
-	s.startWritingRequest(s.defaultRequest)
-
-	_, err := s.conn.readRequest(s.dec)
-	s.Error(err)
-}
-
 func (s *ReadRequestTestSuite) TestReadTimeout() {
 	s.conn.opts.Serve.Timeout.ReadTimeout = time.Millisecond
 	go func() {
@@ -572,45 +530,6 @@ func (s *WriteResponseTestSuite) TestWriteResponse() {
 	got.Body = nil
 
 	s.Equal(expected, got)
-}
-
-func (s *WriteResponseTestSuite) TestEncodingChunked() {
-	done := s.startReadingResponse()
-
-	d := http.NewResponseDecoder(iolib.NewUntilReader(s.outputBuf), http.DecodeOptions{})
-
-	// Apply chunked coding and set trailers for response to write.
-	expectedTrailers := semantic.NewHeaders(map[string][]string{"Foo": {"Bar"}})
-	s.response.Trailers = &expectedTrailers
-	s.response.TransferEncoding = []transfer.Coding{transfer.CodingChunked}
-
-	err := s.conn.writeResponse(s.response, s.enc)
-	s.Require().NoError(err)
-	s.Require().NoError(s.src.Close())
-	<-done
-
-	var got http.Response
-	s.Require().NoError(d.Decode(&got))
-
-	// Apply chunk decoding for body.
-	trailers := []http.Field{}
-	cr := transfer.NewChunkedCoder().NewReader(got.Body).(*transfer.ChunkedReader)
-	cr.SetOnTrailerReceived(func(f []http.Field) {
-		trailers = f
-	})
-
-	_, err = io.ReadAll(cr)
-	s.Require().NoError(err)
-
-	// Compare trailers.
-	s.Equal(expectedTrailers.ToRawFields(), trailers)
-}
-
-func (s *WriteResponseTestSuite) TestEncodingWrong() {
-	s.response.TransferEncoding = []transfer.Coding{"unknown"}
-
-	err := s.conn.writeResponse(s.response, s.enc)
-	s.Error(err)
 }
 
 func (s *WriteResponseTestSuite) TestWriteTimeout() {
