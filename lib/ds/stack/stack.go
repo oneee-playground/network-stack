@@ -8,27 +8,27 @@ import (
 
 var ErrStackEmpty = errors.New("stack is empty")
 
-type stack[T any] struct{ underlying []T }
+type Stack[T any] struct{ underlying []T }
 
-func New[T any](cap uint) *stack[T] {
-	return &stack[T]{underlying: make([]T, 0, cap)}
+func New[T any](cap uint) *Stack[T] {
+	return &Stack[T]{underlying: make([]T, 0, cap)}
 }
 
-func (s *stack[T]) Len() uint {
+func (s *Stack[T]) Len() uint {
 	return uint(len(s.underlying))
 }
 
-func (s *stack[T]) Data() []T {
+func (s *Stack[T]) Data() []T {
 	out := make([]T, len(s.underlying))
 	copy(out, s.underlying)
 	return out
 }
 
-func (s *stack[T]) Push(data T) {
+func (s *Stack[T]) Push(data T) {
 	s.underlying = append(s.underlying, data)
 }
 
-func (s *stack[T]) Pop() (T, error) {
+func (s *Stack[T]) Pop() (T, error) {
 	if s.Len() == 0 {
 		return internal.Zero[T](), ErrStackEmpty
 	}
@@ -39,7 +39,7 @@ func (s *stack[T]) Pop() (T, error) {
 	return data, nil
 }
 
-func (s *stack[T]) Peek() (T, error) {
+func (s *Stack[T]) Peek() (T, error) {
 	if s.Len() == 0 {
 		return internal.Zero[T](), ErrStackEmpty
 	}
