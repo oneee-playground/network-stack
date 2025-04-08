@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"network-stack/application/http"
 	"network-stack/application/http/semantic"
 	"network-stack/application/http/semantic/status"
@@ -41,6 +42,13 @@ func (c *HandleContext) doHandle(handle HandleFunc) (res *semantic.Response, err
 
 	if response == nil && !c.closeConn {
 		return nil, errors.New("nil response is forbidden")
+	}
+
+	if !c.closeConn {
+		// Discard remaning bytes from request body.
+		if _, err := io.Copy(io.Discard, c.request.Body); err != nil {
+			return nil, errors.Wrap(err, "")
+		}
 	}
 
 	return response, nil

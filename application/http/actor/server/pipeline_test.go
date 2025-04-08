@@ -510,6 +510,7 @@ func (s *PipelineWorkerTestSuite) TestOrdered() {
 			output := <-s.worker.outputs
 			response := output.response
 			response.Body = nil
+			expected.Body = nil
 
 			s.Equal(expected, response)
 		}
@@ -530,6 +531,7 @@ func makeOrderMessage(order int) semantic.Message {
 		Headers: semantic.NewHeaders(map[string][]string{
 			"Order": {strconv.Itoa(int(order))},
 		}),
+		Body: bytes.NewReader(nil),
 	}
 }
 
@@ -553,12 +555,12 @@ func (s *PipelineWorkerTestSuite) TestBlocking() {
 	}()
 
 	s.worker.inputs <- pipelineInput{
-		request: &semantic.Request{},
+		request: &semantic.Request{Message: semantic.Message{Body: bytes.NewReader(nil)}},
 		block:   true,
 	}
 
 	nextInput := pipelineInput{
-		request: &semantic.Request{},
+		request: &semantic.Request{Message: semantic.Message{Body: bytes.NewReader(nil)}},
 		block:   false,
 	}
 	select {

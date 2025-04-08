@@ -8,6 +8,7 @@ import (
 	"network-stack/application/http/semantic"
 	"network-stack/application/http/semantic/status"
 	"network-stack/transport"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -33,7 +34,9 @@ func (s *HandleContextTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.remoteAddr = nil
 	s.version = http.Version{1, 1}
-	s.request = &semantic.Request{}
+	s.request = &semantic.Request{Message: semantic.Message{
+		Body: strings.NewReader("Foo is Bar"),
+	}}
 
 	s.hctx = &HandleContext{
 		ctx:        s.ctx,
@@ -54,6 +57,10 @@ func (s *HandleContextTestSuite) TestDoHandle() {
 	res, err := s.hctx.doHandle(handle)
 	s.NoError(err)
 	s.Equal(&semantic.Response{}, res)
+
+	b, err := io.ReadAll(s.request.Body)
+	s.NoError(err)
+	s.Empty(b)
 }
 
 func (s *HandleContextTestSuite) TestDoHandleFatalErr() {
