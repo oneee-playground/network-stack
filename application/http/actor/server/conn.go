@@ -26,7 +26,7 @@ type conn struct {
 	w io.WriteCloser
 
 	handle   HandleFunc
-	transfer *transfer.CodingPipeliner
+	transfer *transfer.CodingApplier
 	clock    clock.Clock
 
 	logger *slog.Logger

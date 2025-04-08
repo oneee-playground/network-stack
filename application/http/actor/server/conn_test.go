@@ -75,7 +75,7 @@ func (s *ServeTestSuite) SetupTest() {
 		version:  s.version,
 		clock:    s.clock,
 		handle:   s.defaultHandle,
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 	}
 
 }
@@ -372,7 +372,7 @@ func (s *ReadRequestTestSuite) SetupTest() {
 	s.conn = &conn{
 		con:      s.dst,
 		r:        iolib.NewUntilReader(s.dst),
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 		clock:    s.clock,
 		// below are not used.
 		version: http.Version{},
@@ -531,7 +531,7 @@ func (s *WriteResponseTestSuite) SetupTest() {
 	s.conn = &conn{
 		con:      s.src,
 		w:        s.src,
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 		clock:    s.clock,
 		// below are not used.
 		r:       nil,

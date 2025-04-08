@@ -19,10 +19,10 @@ type Coder interface {
 	NewWriter(w io.WriteCloser) io.WriteCloser
 }
 
-type CodingPipeliner struct{ coders map[Coding]Coder }
+type CodingApplier struct{ coders map[Coding]Coder }
 
-func NewCodingPipeliner(customs []Coder) *CodingPipeliner {
-	cp := &CodingPipeliner{}
+func NewCodingApplier(customs []Coder) *CodingApplier {
+	cp := &CodingApplier{}
 	cp.coders = map[Coding]Coder{
 		CodingChunked: NewChunkedCoder(),
 	}
@@ -36,10 +36,10 @@ func NewCodingPipeliner(customs []Coder) *CodingPipeliner {
 
 var ErrUnsupportedCoding = errors.New("coding is unsupported")
 
-func (cp *CodingPipeliner) Decode(r io.Reader, codings []Coding, onTrailer func(f []http.Field)) (io.Reader, error) {
+func (ca *CodingApplier) Decode(r io.Reader, codings []Coding, onTrailer func(f []http.Field)) (io.Reader, error) {
 	for idx := len(codings) - 1; idx >= 0; idx-- {
 		coding := codings[idx]
-		coder, ok := cp.coders[coding]
+		coder, ok := ca.coders[coding]
 		if !ok {
 			return nil, ErrUnsupportedCoding
 		}
@@ -67,10 +67,10 @@ func (cp *CodingPipeliner) Decode(r io.Reader, codings []Coding, onTrailer func(
 	return r, nil
 }
 
-func (cp *CodingPipeliner) Encode(w io.WriteCloser, codings []Coding, sendTrailers func() []http.Field) (io.WriteCloser, error) {
+func (ca *CodingApplier) Encode(w io.WriteCloser, codings []Coding, sendTrailers func() []http.Field) (io.WriteCloser, error) {
 	for idx := len(codings) - 1; idx >= 0; idx-- {
 		coding := codings[idx]
-		coder, ok := cp.coders[coding]
+		coder, ok := ca.coders[coding]
 		if !ok {
 			return nil, ErrUnsupportedCoding
 		}

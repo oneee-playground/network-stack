@@ -78,7 +78,7 @@ func (s *ServePipelineTestSuite) SetupTest() {
 		version:  s.version,
 		clock:    s.clock,
 		handle:   s.defaultHandle,
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 		opts: Options{
 			Serve: ServeOptions{
 				SafeMethods: []semantic.Method{semantic.MethodGet},
@@ -246,7 +246,7 @@ func (s *PipelineReceiverTestSuite) SetupTest() {
 		con:      s.dst,
 		r:        iolib.NewUntilReader(s.dst),
 		clock:    s.clock,
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 	}
 
 	s.defaultRequest = semantic.Request{
@@ -384,7 +384,7 @@ func (s *PipelineSenderTestSuite) SetupTest() {
 		w:        s.src,
 		clock:    s.clock,
 		version:  http.Version{1, 1},
-		transfer: transfer.NewCodingPipeliner(nil),
+		transfer: transfer.NewCodingApplier(nil),
 	}
 
 	s.defaultResponse = semantic.Response{
