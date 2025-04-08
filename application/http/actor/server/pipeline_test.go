@@ -486,7 +486,7 @@ func (s *PipelineWorkerTestSuite) TestOrdered() {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	s.worker.workerPool.handle = func(c *HandleContext, request *semantic.Request) *semantic.Response {
+	s.worker.handle = func(c *HandleContext, request *semantic.Request) *semantic.Response {
 		time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 
 		order, _ := request.Headers.Get("Order")
@@ -538,7 +538,7 @@ func (s *PipelineWorkerTestSuite) TestBlocking() {
 	defer wg.Wait()
 
 	processingDone := make(chan struct{})
-	s.worker.workerPool.handle = func(c *HandleContext, request *semantic.Request) *semantic.Response {
+	s.worker.handle = func(c *HandleContext, request *semantic.Request) *semantic.Response {
 		processingDone <- struct{}{}
 		return &semantic.Response{}
 	}
@@ -574,86 +574,4 @@ func (s *PipelineWorkerTestSuite) TestBlocking() {
 	<-processingDone
 
 	close(s.worker.inputs)
-}
-
-type PipelineHandlePoolTestSuite struct {
-	suite.Suite
-
-	ctx context.Context
-
-	extraWorkers uint
-	handle       HandleFunc
-	workerPool   *pipelineHandlePool
-}
-
-func TestPipelineHandlePoolTestSuite(t *testing.T) {
-	suite.Run(t, new(PipelineHandlePoolTestSuite))
-}
-
-func (s *PipelineHandlePoolTestSuite) SetupTest() {
-	s.ctx = context.Background()
-	s.extraWorkers = 1
-	s.handle = func(c *HandleContext, request *semantic.Request) *semantic.Response {
-		return &semantic.Response{}
-	}
-	s.workerPool = newPipelineHandlePool(s.handle, s.extraWorkers)
-}
-
-func (s *PipelineHandlePoolTestSuite) TestEmpty() {
-	s.True(s.workerPool.empty(), s.workerPool)
-	s.workerPool.advanceOldest()
-	s.False(s.workerPool.empty(), s.workerPool)
-}
-
-func (s *PipelineHandlePoolTestSuite) TestEmptyOldestHandle() {
-	output := s.workerPool.oldestHandle()
-	s.Nil(output.output)
-	s.Nil(output.errchan)
-}
-
-func (s *PipelineHandlePoolTestSuite) TestFeed() {
-	hctx := &HandleContext{}
-
-	s.True(s.workerPool.feed(hctx))
-	s.Require().Equal(0, s.workerPool.latest)
-
-	output := s.workerPool.hub[0]
-	s.Require().NotNil(output)
-
-	out := <-output.output
-	s.Equal(&semantic.Response{}, out.response)
-}
-
-func (s *PipelineHandlePoolTestSuite) TestFeedLimit() {
-	hctx := &HandleContext{}
-
-	s.True(s.workerPool.feed(hctx))
-	s.True(s.workerPool.feed(hctx))
-	s.False(s.workerPool.feed(hctx))
-}
-
-func (s *PipelineHandlePoolTestSuite) TestUsage() {
-	// This is the intended way of using it.
-	hctx := &HandleContext{ctx: s.ctx}
-
-	s.Require().True(s.workerPool.feed(hctx))
-	s.Require().True(s.workerPool.feed(hctx))
-
-	t := time.After(time.Second)
-
-	cnt := 0
-	for !s.workerPool.empty() {
-		oldest := s.workerPool.oldestHandle()
-		select {
-		case err := <-oldest.errchan: // The test only sends output. So ignore errchan.
-			s.FailNow("what", err)
-		case <-oldest.output:
-			cnt++
-			s.workerPool.advanceOldest()
-		case <-t:
-			s.FailNow("how?")
-		}
-	}
-
-	s.Equal(2, cnt)
 }

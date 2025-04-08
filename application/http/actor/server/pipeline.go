@@ -5,6 +5,7 @@ import (
 	"context"
 	"network-stack/application/http"
 	"network-stack/application/http/semantic"
+	"network-stack/lib/ds/queue"
 	"network-stack/transport"
 	"slices"
 	"sync"
@@ -232,7 +233,8 @@ type pipelineWorker struct {
 	outputs chan pipelineOutput
 	errchan chan error
 
-	workerPool *pipelineHandlePool
+	handle HandleFunc
+	pool   *queue.CircularQueue[*handleOutput]
 }
 
 type handleOutput struct {
@@ -243,11 +245,14 @@ type handleOutput struct {
 func newPipelineWorker(conn *conn, extraWorkers uint) *pipelineWorker {
 	return &pipelineWorker{
 		connRemoteAddr: conn.con.RemoteAddr(),
-		moreSignal:     make(chan struct{}),
-		inputs:         make(chan pipelineInput),
-		outputs:        make(chan pipelineOutput, extraWorkers),
-		errchan:        make(chan error, 1),
-		workerPool:     newPipelineHandlePool(conn.handle, extraWorkers),
+
+		moreSignal: make(chan struct{}),
+		inputs:     make(chan pipelineInput),
+		outputs:    make(chan pipelineOutput, extraWorkers),
+		errchan:    make(chan error, 1),
+
+		handle: conn.handle,
+		pool:   queue.NewCircular[*handleOutput](1 + extraWorkers),
 	}
 }
 
@@ -268,19 +273,21 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 				// Drain inputs.
 			}
 
-			for !pw.workerPool.empty() {
-				oldestHandle := pw.workerPool.oldestHandle()
-				pw.workerPool.advanceOldest()
-				// Drain current handles.
+			for pw.pool.Len() > 0 {
+				out, _ := pw.pool.Dequeue()
+				// Drain handles.
 				select {
-				case <-oldestHandle.errchan:
-				case <-oldestHandle.output:
+				case <-out.errchan:
+				case <-out.output:
 				}
 			}
 		}()
 
 		for {
-			oldestHandle := pw.workerPool.oldestHandle()
+			var oldestHandle handleOutput
+			if out, err := pw.pool.Peek(); err == nil {
+				oldestHandle = *out
+			}
 
 			select {
 			case <-ctx.Done():
@@ -291,7 +298,7 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 				return
 			case output := <-oldestHandle.output:
 				pw.outputs <- output
-				pw.workerPool.advanceOldest()
+				pw.pool.Dequeue()
 
 				if inputs != nil {
 					break
@@ -304,7 +311,7 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 					inputbuf <- input
 					inputs = inputbuf
 				default:
-					if pw.workerPool.empty() {
+					if pw.empty() {
 						// inputs channel was blocked by caller's request.
 						// Only re-assign it when workers are all finished.
 						if blocked {
@@ -320,7 +327,7 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 				}
 			case input, ok := <-inputs:
 				if !ok {
-					if pw.workerPool.empty() {
+					if pw.pool.Len() == 0 {
 						// nothing is currently processing.
 						// return immediately.
 						return
@@ -336,7 +343,7 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 					request:    input.request,
 				}
 
-				if hasSpace := pw.workerPool.feed(hctx); !hasSpace {
+				if hasSpace := pw.feed(hctx); !hasSpace {
 					// Stash the input until it has space.
 					inputbuf <- input
 					inputs = nil
@@ -360,51 +367,15 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 	}()
 }
 
-func (p *pipelineWorker) empty() bool {
-	return p.workerPool.empty()
-}
-
-type pipelineHandlePool struct {
-	handle HandleFunc
-
-	hub    []*handleOutput
-	oldest int
-	latest int
-}
-
-func newPipelineHandlePool(handle HandleFunc, extraWorkers uint) *pipelineHandlePool {
-	return &pipelineHandlePool{
-		handle: handle,
-		hub:    make([]*handleOutput, 1+extraWorkers),
-		oldest: 0, latest: -1,
-	}
-}
-
-func (p *pipelineHandlePool) oldestHandle() handleOutput {
-	handle := p.hub[p.oldest]
-	if handle == nil {
-		return handleOutput{}
-	}
-	return *handle
-}
-
-func (p *pipelineHandlePool) advanceOldest() {
-	p.hub[p.oldest] = nil
-	p.oldest = p.advance(p.oldest)
-}
-
-func (p *pipelineHandlePool) feed(hctx *HandleContext) (hasSpace bool) {
-	latest := p.advance(p.latest)
-	if p.hub[latest] != nil {
-		return false
-	}
-
+func (p *pipelineWorker) feed(hctx *HandleContext) (hasSpace bool) {
 	output := handleOutput{
 		output:  make(chan pipelineOutput, 1),
 		errchan: make(chan error, 1),
 	}
-	p.hub[latest] = &output
-	p.latest = latest
+
+	if success := p.pool.Enqueue(&output); !success {
+		return false
+	}
 
 	go func() {
 		res, err := hctx.doHandle(p.handle)
@@ -423,8 +394,6 @@ func (p *pipelineHandlePool) feed(hctx *HandleContext) (hasSpace bool) {
 	return true
 }
 
-func (p *pipelineHandlePool) advance(n int) int { return (n + 1) % len(p.hub) }
-
-func (p *pipelineHandlePool) empty() bool {
-	return (p.advance(p.latest) == p.oldest) && (p.hub[p.oldest] == nil)
+func (p *pipelineWorker) empty() bool {
+	return p.pool.Len() == 0
 }
