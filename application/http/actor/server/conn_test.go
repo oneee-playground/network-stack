@@ -578,6 +578,11 @@ func TestToStatusError(t *testing.T) {
 			wantCause: true,
 		},
 		{
+			input:     semantic.ErrContentTooBig,
+			expected:  status.ContentTooLarge,
+			wantCause: true,
+		},
+		{
 			input:     transfer.ErrUnsupportedCoding,
 			expected:  status.NotImplemented,
 			wantCause: true,

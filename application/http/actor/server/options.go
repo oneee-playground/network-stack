@@ -22,8 +22,7 @@ type ServeOptions struct {
 
 	Timeout TimeoutOptions
 
-	SafeMethods   []semantic.Method
-	MaxContentLen uint
+	SafeMethods []semantic.Method
 }
 
 type PipelineOptions struct {

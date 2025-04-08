@@ -26,7 +26,10 @@ type Message struct {
 type ParseMessageOptions struct {
 	CombineFieldValues bool
 	RequiredFields     []string
+	MaxContentLen      uint
 }
+
+var ErrContentTooBig = errors.New("content is too big")
 
 func createMessage(
 	ver http.Version,
@@ -54,10 +57,11 @@ func createMessage(
 		for _, coding := range v {
 			msg.TransferEncoding = append(msg.TransferEncoding, transfer.Coding(coding))
 		}
-	} else {
-		if msg.ContentLength != nil {
-			// Reference: https://datatracker.ietf.org/doc/html/rfc9110#section-8.6
-			msg.Body = iolib.LimitReader(msg.Body, *msg.ContentLength)
+	}
+	if msg.ContentLength != nil {
+		length := *msg.ContentLength
+		if opts.MaxContentLen > 0 && length > opts.MaxContentLen {
+			return Message{}, ErrContentTooBig
 		}
 	}
 

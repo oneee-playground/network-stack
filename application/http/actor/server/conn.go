@@ -235,9 +235,7 @@ func (c *conn) writeResponse(response *semantic.Response, e *http.ResponseEncode
 			return err
 		}
 	case response.ContentLength != nil:
-		response.Body = iolib.LimitReader(
-			response.Body, *response.ContentLength,
-		)
+		response.Body = iolib.LimitReader(response.Body, *response.ContentLength)
 	}
 
 	if err := e.Encode(response.RawResponse()); err != nil {
@@ -254,6 +252,11 @@ func (c *conn) writeResponse(response *semantic.Response, e *http.ResponseEncode
 func toStatusError(err error) status.Error {
 	if errors.Is(err, transport.ErrDeadLineExceeded) {
 		return status.NewError(nil, status.RequestTimeout)
+	}
+
+	if errors.Is(err, semantic.ErrContentTooBig) {
+		// Reference: https://datatracker.ietf.org/doc/html/rfc9110#name-413-content-too-large
+		return status.NewError(err, status.ContentTooLarge)
 	}
 
 	if errors.Is(err, semantic.ErrURITooLong) {

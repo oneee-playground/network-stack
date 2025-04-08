@@ -43,10 +43,17 @@ func TestCreateMessage(t *testing.T) {
 		require.NotNil(t, msg.ContentLength)
 		assert.Equal(t, uint(5), *msg.ContentLength)
 
-		assert.IsType(t, &iolib.LimitedReader{}, msg.Body)
 		b, err := io.ReadAll(msg.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, []byte("Hello"), b)
+	})
+
+	t.Run("content too big", func(t *testing.T) {
+		h := []http.Field{
+			{Name: []byte("Content-Length"), Value: []byte("5")},
+		}
+		_, err := createMessage(ver, h, nil, ParseMessageOptions{MaxContentLen: 1})
+		assert.ErrorIs(t, err, ErrContentTooBig)
 	})
 }
 
