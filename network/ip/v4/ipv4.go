@@ -17,6 +17,15 @@ func (a Addr) ToUint32() (n uint32) {
 	return
 }
 
+func (a Addr) String() string {
+	var nums = make([]string, 4)
+	for idx, digit := range a {
+		nums[idx] = strconv.FormatUint(uint64(digit), 10)
+	}
+
+	return strings.Join(nums, ".")
+}
+
 func ParseAddr(s string) (Addr, error) {
 	digits := strings.Split(s, ".")
 	if len(digits) != 4 {

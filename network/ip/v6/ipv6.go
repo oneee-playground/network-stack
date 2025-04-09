@@ -10,6 +10,68 @@ import (
 
 type Addr [16]byte
 
+func (a Addr) String() string {
+	blocks := a.Blocks()
+
+	// find the best match for the "::".
+	ignoreIdx, ignoreLen := -1, 1
+	for idx := 0; idx < len(blocks); {
+		start := idx
+		for idx < len(blocks) && blocks[idx] == 0 {
+			idx++
+		}
+
+		length := idx - start
+
+		if length == 0 {
+			idx++
+			continue
+		}
+		if length > ignoreLen {
+			ignoreLen = length
+			ignoreIdx = start
+		}
+	}
+
+	if ignoreLen == len(blocks) {
+		return "::"
+	}
+
+	encodeHex := func(block uint16) string {
+		encoded := strconv.FormatUint(uint64(block), 16)
+		return strings.ToUpper(encoded)
+	}
+
+	parts := make([]string, 0, len(blocks)-ignoreLen+2)
+	for idx := 0; idx < len(blocks); {
+		block := blocks[idx]
+
+		if idx == ignoreIdx {
+			if len(parts) == 0 || len(blocks)-ignoreLen == idx {
+				// For the first and last "::".
+				parts = append(parts, "")
+			}
+			parts = append(parts, "") // this creates "::" when joined
+			idx += ignoreLen
+			continue
+		}
+
+		parts = append(parts, encodeHex(block))
+		idx++
+	}
+
+	return strings.Join(parts, ":")
+}
+
+func (a Addr) Blocks() [8]uint16 {
+	var blocks [8]uint16
+	for i := 0; i < 8; i++ {
+		aIdx := 2 * i
+		blocks[i] = uint16(a[aIdx])<<8 | uint16(a[aIdx+1])
+	}
+	return blocks
+}
+
 func ParseAddr(s string) (Addr, error) {
 	before, after, found := strings.Cut(s, "::")
 	var addr Addr

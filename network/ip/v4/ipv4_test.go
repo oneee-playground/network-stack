@@ -71,3 +71,8 @@ func TestAddrToUint32(t *testing.T) {
 	expected := uint32(0xFFEE0022)
 	assert.Equal(t, expected, addr.ToUint32())
 }
+
+func TestAddrToString(t *testing.T) {
+	addr := Addr{127, 0, 0, 1}
+	assert.Equal(t, "127.0.0.1", addr.String())
+}
