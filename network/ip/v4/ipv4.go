@@ -1,6 +1,7 @@
 package ipv4
 
 import (
+	"network-stack/network/ip"
 	"strconv"
 	"strings"
 
@@ -8,6 +9,11 @@ import (
 )
 
 type Addr [4]byte
+
+var _ ip.Addr = Addr{}
+
+func (a Addr) Raw() []byte   { return a[:] }
+func (a Addr) Version() uint { return 4 }
 
 func (a Addr) ToUint32() (n uint32) {
 	n |= uint32(a[0]) << 24

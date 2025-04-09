@@ -3,7 +3,7 @@ package domain
 import (
 	"context"
 	"maps"
-	"network-stack/network"
+	"network-stack/network/ip"
 
 	"github.com/pkg/errors"
 )
@@ -11,23 +11,23 @@ import (
 var ErrDomainNotFound = errors.New("domain not found")
 
 type Lookuper interface {
-	Lookup(ctx context.Context, domain string) (addrs []network.Addr, err error)
+	LookupIP(ctx context.Context, domain string) (addrs []ip.Addr, err error)
 }
 
 type mapLookuper struct {
-	set map[string][]network.Addr
+	set map[string][]ip.Addr
 }
 
 var _ Lookuper = (*mapLookuper)(nil)
 
-func NewMapLookuper(set map[string][]network.Addr) *mapLookuper {
+func NewMapLookuper(set map[string][]ip.Addr) *mapLookuper {
 	if set == nil {
-		set = make(map[string][]network.Addr)
+		set = make(map[string][]ip.Addr)
 	}
 	return &mapLookuper{set: maps.Clone(set)}
 }
 
-func (m *mapLookuper) Lookup(ctx context.Context, domain string) (addrs []network.Addr, err error) {
+func (m *mapLookuper) LookupIP(ctx context.Context, domain string) (addrs []ip.Addr, err error) {
 	addrs, ok := m.set[domain]
 	if !ok {
 		return nil, ErrDomainNotFound
@@ -35,7 +35,7 @@ func (m *mapLookuper) Lookup(ctx context.Context, domain string) (addrs []networ
 	return addrs, nil
 }
 
-func (m *mapLookuper) Set(domain string, addrs []network.Addr) {
+func (m *mapLookuper) Set(domain string, addrs []ip.Addr) {
 	if len(addrs) == 0 {
 		return
 	}

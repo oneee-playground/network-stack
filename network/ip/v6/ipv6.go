@@ -1,6 +1,7 @@
 package ipv6
 
 import (
+	"network-stack/network/ip"
 	ipv4 "network-stack/network/ip/v4"
 	"strconv"
 	"strings"
@@ -9,6 +10,11 @@ import (
 )
 
 type Addr [16]byte
+
+var _ ip.Addr = Addr{}
+
+func (a Addr) Raw() []byte   { return a[:] }
+func (a Addr) Version() uint { return 6 }
 
 func (a Addr) String() string {
 	blocks := a.Blocks()
