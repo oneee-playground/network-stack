@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"context"
+	"network-stack/network"
+	ipv4 "network-stack/network/ip/v4"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -9,38 +12,44 @@ import (
 type LookuperTestSuite struct {
 	suite.Suite
 
-	initial  map[string]string
+	initial  map[string][]network.Addr
 	lookuper Lookuper
 }
 
 func (s *LookuperTestSuite) SetupTest() {
-	s.initial = map[string]string{
-		"localhost":   "127.0.0.1",
-		"example.com": "1.1.1.1", // It's actually cloudflare. But who cares?
+	s.initial = map[string][]network.Addr{
+		"localhost":   {ipv4.Addr{127, 0, 0, 1}},
+		"example.com": {ipv4.Addr{1, 1, 1, 1}}, // It's actually cloudflare. But who cares?
 	}
 }
 
 func (s *LookuperTestSuite) TestLookup() {
-	addr, err := s.lookuper.Lookup("localhost")
-	s.NoError(err)
-	s.Equal("127.0.0.1", addr)
+	ctx := context.Background()
 
-	addr, err = s.lookuper.Lookup("example.com")
+	addrs, err := s.lookuper.Lookup(ctx, "localhost")
 	s.NoError(err)
-	s.Equal("1.1.1.1", addr)
+	s.Len(addrs, 1)
+	s.Equal(ipv4.Addr{127, 0, 0, 1}, addrs[0])
+
+	addrs, err = s.lookuper.Lookup(ctx, "example.com")
+	s.NoError(err)
+	s.Len(addrs, 1)
+	s.Equal(ipv4.Addr{1, 1, 1, 1}, addrs[0])
 
 	// Non-existent.
-	addr, err = s.lookuper.Lookup("non-existent.com")
+	addrs, err = s.lookuper.Lookup(ctx, "non-existent.com")
 	s.ErrorIs(err, ErrDomainNotFound)
-	s.Zero(addr)
+	s.Empty(addrs)
 }
 
 func (s *LookuperTestSuite) TestLookupInitCopied() {
-	s.initial["localhost"] = "haha modified"
+	ctx := context.Background()
+	s.initial["localhost"] = []network.Addr{ipv4.Addr{123, 123, 123, 123}}
 
-	addr, err := s.lookuper.Lookup("localhost")
+	addrs, err := s.lookuper.Lookup(ctx, "localhost")
 	s.NoError(err)
-	s.Equal("127.0.0.1", addr)
+	s.Len(addrs, 1)
+	s.Equal(ipv4.Addr{127, 0, 0, 1}, addrs[0])
 }
 
 type mapLookuperTestSuite struct{ LookuperTestSuite }

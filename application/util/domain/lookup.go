@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"context"
 	"maps"
+	"network-stack/network"
 
 	"github.com/pkg/errors"
 )
@@ -9,30 +11,35 @@ import (
 var ErrDomainNotFound = errors.New("domain not found")
 
 type Lookuper interface {
-	Lookup(domain string) (addr string, err error)
+	Lookup(ctx context.Context, domain string) (addrs []network.Addr, err error)
 }
 
 type mapLookuper struct {
-	set map[string]string
+	set map[string][]network.Addr
 }
 
 var _ Lookuper = (*mapLookuper)(nil)
 
-func NewMapLookuper(set map[string]string) *mapLookuper {
+func NewMapLookuper(set map[string][]network.Addr) *mapLookuper {
 	if set == nil {
-		set = make(map[string]string)
+		set = make(map[string][]network.Addr)
 	}
 	return &mapLookuper{set: maps.Clone(set)}
 }
 
-func (m *mapLookuper) Lookup(domain string) (addr string, err error) {
-	addr, ok := m.set[domain]
+func (m *mapLookuper) Lookup(ctx context.Context, domain string) (addrs []network.Addr, err error) {
+	addrs, ok := m.set[domain]
 	if !ok {
-		return "", ErrDomainNotFound
+		return nil, ErrDomainNotFound
 	}
-	return addr, nil
+	return addrs, nil
 }
 
-func (m *mapLookuper) Set(domain, addr string) { m.set[domain] = addr }
+func (m *mapLookuper) Set(domain string, addrs []network.Addr) {
+	if len(addrs) == 0 {
+		return
+	}
+	m.set[domain] = addrs
+}
 
 func (m *mapLookuper) Del(domain string) { delete(m.set, domain) }
