@@ -1,15 +1,12 @@
 package uri
 
 import (
+	"network-stack/lib/pointer"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func newp[T any](n T) *T {
-	return &n
-}
 
 var examplePairs []struct {
 	desc string
@@ -48,7 +45,7 @@ var examplePairs []struct {
 				Host: "[2001:db8::7]",
 			},
 			Path:  "/c=GB",
-			Query: newp("objectClass?one"),
+			Query: pointer.To("objectClass?one"),
 		},
 	},
 	{
@@ -78,7 +75,7 @@ var examplePairs []struct {
 			Scheme: "telnet",
 			Authority: &Authority{
 				Host: "192.0.2.16",
-				Port: newp(uint16(80)),
+				Port: pointer.To(uint16(80)),
 			},
 			Path: "/",
 		},
@@ -349,7 +346,7 @@ func TestParseAuthority(t *testing.T) {
 			authority: Authority{
 				UserInfo: "user:pass",
 				Host:     "example.com",
-				Port:     newp(uint16(8080)),
+				Port:     pointer.To(uint16(8080)),
 			},
 		},
 		{
@@ -358,7 +355,7 @@ func TestParseAuthority(t *testing.T) {
 			authority: Authority{
 				UserInfo: "",
 				Host:     "example.com",
-				Port:     newp(uint16(8080)),
+				Port:     pointer.To(uint16(8080)),
 			},
 		},
 		{
@@ -376,7 +373,7 @@ func TestParseAuthority(t *testing.T) {
 			authority: Authority{
 				UserInfo: "user:pass",
 				Host:     "",
-				Port:     newp(uint16(8080)),
+				Port:     pointer.To(uint16(8080)),
 			},
 		},
 	}
