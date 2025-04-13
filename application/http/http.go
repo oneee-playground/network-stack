@@ -68,6 +68,9 @@ func (ver Version) Text() []byte {
 	return buf.Bytes()
 }
 
+func (ver Version) Major() uint { return ver[0] }
+func (ver Version) Minor() uint { return ver[1] }
+
 func (ver Version) String() string { return string(ver.Text()) }
 
 type Field struct{ Name, Value []byte }
