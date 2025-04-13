@@ -1,4 +1,4 @@
-package server
+package common
 
 import (
 	"context"
@@ -10,18 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestServeAltHandlerPanic(t *testing.T) {
+func TestHandleAltPanic(t *testing.T) {
 	testAltHandler := func(ctx context.Context, conn transport.Conn) error {
 		panic("haha I always panic")
 	}
 
 	conn, _ := pipe.NewPair("a", "b", clock.New())
 
-	c := httpWrappedConn{
-		conn: conn,
-		r:    conn,
-		w:    conn,
-	}
+	c := NewHTTPWrappedConn(conn, conn, conn)
 
-	assert.Error(t, serveAltHandler(context.Background(), &c, testAltHandler))
+	assert.Error(t, HandleAlt(context.Background(), c, testAltHandler))
 }

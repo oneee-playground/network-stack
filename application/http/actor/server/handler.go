@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"network-stack/application/http"
+	"network-stack/application/http/actor/common"
 	"network-stack/application/http/semantic"
 	"network-stack/application/http/semantic/status"
 	"network-stack/transport"
@@ -22,7 +23,7 @@ type HandleContext struct {
 	request *semantic.Request
 
 	closeConn  bool
-	altHandler AltHandler
+	altHandler common.AltHandler
 
 	// Should only be used inside this struct.
 	_fatalError error
@@ -88,7 +89,7 @@ func (c *HandleContext) Error(err error) *semantic.Response {
 func (c *HandleContext) Context() context.Context  { return c.ctx }
 func (c *HandleContext) HTTPVersion() http.Version { return c.version }
 
-func (c *HandleContext) SwitchProtocol(proto string, customRes *semantic.Response, h AltHandler) *semantic.Response {
+func (c *HandleContext) SwitchProtocol(proto string, customRes *semantic.Response, h common.AltHandler) *semantic.Response {
 	if h == nil {
 		c._fatalError = errors.New("alt handler should be non-nil")
 		return nil

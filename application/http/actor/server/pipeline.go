@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"network-stack/application/http"
+	"network-stack/application/http/actor/common"
 	"network-stack/application/http/semantic"
 	"network-stack/lib/ds/queue"
 	"network-stack/transport"
@@ -13,7 +14,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *conn) servePipeine(ctx context.Context) (AltHandler, error) {
+func (c *conn) servePipeine(ctx context.Context) (common.AltHandler, error) {
 	bufLen := c.opts.Pipeline.BufferLength
 
 	var wg sync.WaitGroup
@@ -45,7 +46,7 @@ func (c *conn) servePipeine(ctx context.Context) (AltHandler, error) {
 		errResponse *semantic.Response
 		unsafeInput *pipelineInput
 
-		altHandler AltHandler
+		altHandler common.AltHandler
 	)
 
 	for loop {
@@ -221,7 +222,7 @@ type pipelineInput struct {
 type pipelineOutput struct {
 	response   *semantic.Response
 	closeConn  bool
-	altHandler AltHandler
+	altHandler common.AltHandler
 }
 
 type pipelineWorker struct {

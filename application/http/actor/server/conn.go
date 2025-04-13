@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"network-stack/application/http"
+	"network-stack/application/http/actor/common"
 	"network-stack/application/http/semantic"
 	"network-stack/application/http/semantic/status"
 	"network-stack/application/http/transfer"
@@ -46,7 +47,7 @@ func (c *conn) start(ctx context.Context) {
 		}
 	}()
 
-	var altHandler AltHandler
+	var altHandler common.AltHandler
 	var err error
 	switch {
 	case c.isV2():
@@ -61,8 +62,8 @@ func (c *conn) start(ctx context.Context) {
 	}
 
 	if altHandler != nil {
-		httpConn := &httpWrappedConn{conn: c.con, r: c.r, w: c.w}
-		err = serveAltHandler(ctx, httpConn, altHandler)
+		httpConn := common.NewHTTPWrappedConn(c.con, c.r, c.w)
+		err = common.HandleAlt(ctx, httpConn, altHandler)
 	}
 
 	switch {
@@ -77,14 +78,13 @@ func (c *conn) start(ctx context.Context) {
 	}
 }
 
-func (c *conn) serve(ctx context.Context) (AltHandler, error) {
+func (c *conn) serve(ctx context.Context) (common.AltHandler, error) {
 	dec := http.NewRequestDecoder(c.r, c.opts.Serve.Decode)
 	enc := http.NewResponseEncoder(c.w, c.opts.Serve.Encode)
 
 	loop := true
 
-	var altHandler AltHandler
-
+	var altHandler common.AltHandler
 	for loop {
 		if err := c.waitForRequest(ctx); err != nil {
 			return nil, errors.Wrap(err, "error while waiting for request")
