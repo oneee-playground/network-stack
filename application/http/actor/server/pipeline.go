@@ -236,6 +236,7 @@ type pipelineWorker struct {
 
 	handle HandleFunc
 	pool   *queue.CircularQueue[*handleOutput]
+	poolMu sync.Mutex
 }
 
 type handleOutput struct {
@@ -298,8 +299,8 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 				pw.errchan <- errors.Wrap(err, "unexpected error while handling request")
 				return
 			case output := <-oldestHandle.output:
+				pw.nextHandle()
 				pw.outputs <- output
-				pw.pool.Dequeue()
 
 				if inputs != nil {
 					break
@@ -328,7 +329,7 @@ func (pw *pipelineWorker) start(ctx context.Context, wg *sync.WaitGroup) {
 				}
 			case input, ok := <-inputs:
 				if !ok {
-					if pw.pool.Len() == 0 {
+					if pw.empty() {
 						// nothing is currently processing.
 						// return immediately.
 						return
@@ -374,6 +375,8 @@ func (p *pipelineWorker) feed(hctx *HandleContext) (hasSpace bool) {
 		errchan: make(chan error, 1),
 	}
 
+	p.poolMu.Lock()
+	defer p.poolMu.Unlock()
 	if success := p.pool.Enqueue(&output); !success {
 		return false
 	}
@@ -395,6 +398,14 @@ func (p *pipelineWorker) feed(hctx *HandleContext) (hasSpace bool) {
 	return true
 }
 
+func (p *pipelineWorker) nextHandle() {
+	p.poolMu.Lock()
+	p.pool.Dequeue()
+	p.poolMu.Unlock()
+}
+
 func (p *pipelineWorker) empty() bool {
+	p.poolMu.Lock()
+	defer p.poolMu.Unlock()
 	return p.pool.Len() == 0
 }

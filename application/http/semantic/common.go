@@ -6,13 +6,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-func defaultPort(scheme string) uint16 {
+func DefaultPort(scheme string) uint16 {
 	switch scheme {
 	case "http":
 		return 80
 	case "https":
 		return 443
 	}
+
 	return 0
 }
 

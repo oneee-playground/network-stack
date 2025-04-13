@@ -10,6 +10,7 @@ import (
 	"network-stack/application/http/transfer"
 	"network-stack/application/util/uri"
 	iolib "network-stack/lib/io"
+	"network-stack/lib/pointer"
 	"network-stack/transport"
 	"network-stack/transport/pipe"
 	"reflect"
@@ -405,7 +406,9 @@ func (s *PipelineSenderTestSuite) TestSend() {
 
 	N := 3
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		dec := http.NewResponseDecoder(iolib.NewUntilReader(s.dst), http.DecodeOptions{})
 
 		for range N {
@@ -415,16 +418,14 @@ func (s *PipelineSenderTestSuite) TestSend() {
 			response, err := semantic.ResponseFrom(raw, semantic.ParseResponseOptions{})
 			s.Require().NoError(err)
 
-			expected := s.defaultResponse
-			expected.Body = nil
 			response.Body = nil
 
-			s.Equal(expected, response)
+			s.Equal(s.defaultResponse, response)
 		}
 	}()
 
 	for range N {
-		s.sender.stream <- &s.defaultResponse
+		s.sender.stream <- pointer.To(s.defaultResponse.Clone())
 	}
 	close(s.sender.stream)
 }

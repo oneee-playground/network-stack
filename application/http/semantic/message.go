@@ -5,6 +5,8 @@ import (
 	"network-stack/application/http"
 	"network-stack/application/http/transfer"
 	iolib "network-stack/lib/io"
+	"network-stack/lib/pointer"
+	"slices"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -146,6 +148,24 @@ func (m *Message) EnsureHeadersSet() {
 			m.Headers.Add("Transfer-Encoding", string(enc))
 		}
 	}
+}
+
+// Doesn't clone the body.
+func (m Message) Clone() Message {
+	msg := Message{
+		Version:          m.Version,
+		Headers:          HeadersFrom(m.Headers.ToRawFields(), true),
+		TransferEncoding: slices.Clone(m.TransferEncoding),
+		Body:             m.Body,
+	}
+
+	if m.Trailers != nil {
+		msg.Trailers = pointer.To(HeadersFrom(m.Trailers.ToRawFields(), true))
+	}
+	if m.ContentLength != nil {
+		msg.ContentLength = pointer.To(*msg.ContentLength)
+	}
+	return msg
 }
 
 func assertHeaderContains(h Headers, keys []string) error {

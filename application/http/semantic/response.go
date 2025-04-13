@@ -58,6 +58,15 @@ func (r Response) RawResponse() http.Response {
 	return res
 }
 
+func (r Response) Clone() Response {
+	res := Response{
+		Status:  r.Status,
+		Date:    r.Date,
+		Message: r.Message.Clone(),
+	}
+	return res
+}
+
 func extractDate(h Headers) (time.Time, error) {
 	v, ok := h.Get("Date")
 	if !ok {

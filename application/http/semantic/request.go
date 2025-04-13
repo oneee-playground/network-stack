@@ -89,6 +89,16 @@ func (r Request) RawRequest() http.Request {
 	return req
 }
 
+func (r Request) Clone() Request {
+	req := Request{
+		Method:  r.Method,
+		URI:     r.URI,
+		Host:    r.Host,
+		Message: r.Message.Clone(),
+	}
+	return req
+}
+
 func extractHost(h Headers) (string, error) {
 	v, ok := h.Get("Host")
 	if !ok {
@@ -195,8 +205,8 @@ func normalizeURI(u uri.URI) uri.URI {
 		// the normal form is to omit the port subcomponent.
 		p := *u.Authority.Port
 		if false ||
-			(u.Scheme == "http" && p == defaultPort("http")) ||
-			(u.Scheme == "https" && p == defaultPort("https")) {
+			(u.Scheme == "http" && p == DefaultPort("http")) ||
+			(u.Scheme == "https" && p == DefaultPort("https")) {
 			u.Authority.Port = nil
 		}
 	}
