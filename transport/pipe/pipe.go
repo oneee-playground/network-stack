@@ -28,18 +28,18 @@ type pipe struct {
 	// the opposite pipe.
 	counterpart *pipe
 
-	addr pipeAddr
+	addr Addr
 }
 
-type pipeAddr struct {
-	name string
+type Addr struct {
+	Name string
 }
 
-func (p pipeAddr) NetworkAddr() network.Addr { return nil }
-func (p pipeAddr) Identifier() any           { return p.name }
-func (p pipeAddr) String() string            { return p.name }
+func (p Addr) NetworkAddr() network.Addr { return nil }
+func (p Addr) Identifier() any           { return p.Name }
+func (p Addr) String() string            { return p.Name }
 
-var _ transport.Addr = pipeAddr{}
+var _ transport.Addr = Addr{}
 var _ transport.Conn = (*pipe)(nil)
 
 func NewPair(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
@@ -50,7 +50,7 @@ func NewPair(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
 		clock:     clock,
 		rdeadLine: newDeadLine(clock),
 		wdeadLine: newDeadLine(clock),
-		addr:      pipeAddr{name: name1},
+		addr:      Addr{Name: name1},
 	}
 	c2 = &pipe{
 		stream:    make(chan []byte),
@@ -59,7 +59,7 @@ func NewPair(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
 		clock:     clock,
 		rdeadLine: newDeadLine(clock),
 		wdeadLine: newDeadLine(clock),
-		addr:      pipeAddr{name: name2},
+		addr:      Addr{Name: name2},
 	}
 	c1.counterpart, c2.counterpart = c2, c1
 	return
