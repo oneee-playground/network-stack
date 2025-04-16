@@ -101,6 +101,7 @@ func (s *PipeListenerTestSuite) TestAccept() {
 	conn, err := s.pl.Accept(context.Background())
 	s.Equal(p2, conn)
 	s.NoError(err)
+	<-done
 }
 
 func (s *PipeListenerTestSuite) TestAcceptCancels() {
