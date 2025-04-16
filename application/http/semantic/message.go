@@ -163,7 +163,7 @@ func (m Message) Clone() Message {
 		msg.Trailers = pointer.To(HeadersFrom(m.Trailers.ToRawFields(), true))
 	}
 	if m.ContentLength != nil {
-		msg.ContentLength = pointer.To(*msg.ContentLength)
+		msg.ContentLength = pointer.To(*m.ContentLength)
 	}
 	return msg
 }
