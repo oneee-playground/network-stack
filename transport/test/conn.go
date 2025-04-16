@@ -152,6 +152,36 @@ func (s *ConnTestSuite) TestClose() {
 	}()
 }
 
+func (s *ConnTestSuite) TestReadBeforeClose() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.C1.Read(nil)
+		s.ErrorIs(err, transport.ErrConnClosed)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	s.Require().NoError(s.C1.Close())
+}
+
+func (s *ConnTestSuite) TestWriteBeforeClose() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.C1.Write([]byte("hey"))
+		s.ErrorIs(err, transport.ErrConnClosed)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	s.Require().NoError(s.C1.Close())
+}
+
 func (s *ConnTestSuite) TestReadDeadLine() {
 	s.C1.SetReadDeadLine(s.Clock.Now().Add(-time.Second))
 
