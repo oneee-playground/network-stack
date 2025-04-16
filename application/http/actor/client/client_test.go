@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"network-stack/application/http"
 	"network-stack/application/http/actor/common"
@@ -70,7 +71,6 @@ func (s *ClientTestSuite) SetupTest() {
 
 func (s *ClientTestSuite) TestSend() {
 	var wg sync.WaitGroup
-	defer wg.Wait()
 	n := uint(5)
 
 	request := semantic.Request{
@@ -95,6 +95,7 @@ func (s *ClientTestSuite) TestSend() {
 	}
 	response.EnsureHeadersSet()
 
+	wg.Add(int(n))
 	<-s.doListen(n, func(conn transport.Conn) {
 		dec := http.NewRequestDecoder(iolib.NewUntilReader(conn), http.DecodeOptions{})
 		enc := http.NewResponseEncoder(conn, http.EncodeOptions{})
@@ -102,7 +103,6 @@ func (s *ClientTestSuite) TestSend() {
 		response := response.Clone()
 		response.Body = bytes.NewBuffer(nil)
 
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			var req http.Request
@@ -112,11 +112,14 @@ func (s *ClientTestSuite) TestSend() {
 			raw.Body = nil
 			req.Body = nil
 
-			s.Equal(raw, req)
+			s.Require().Equal(raw, req)
 
-			s.NoError(enc.Encode(response.RawResponse()))
+			s.Require().NoError(enc.Encode(response.RawResponse()))
 		}()
 	})
+
+	var m sync.Mutex
+	releases := []func() error{}
 
 	for range n {
 		wg.Add(1)
@@ -134,12 +137,18 @@ func (s *ClientTestSuite) TestSend() {
 
 			got.Body = body
 
-			wg.Add(1)
-			time.AfterFunc(10*time.Millisecond, func() {
-				defer wg.Done()
-				s.NoError(release())
-			})
+			_, err = io.ReadAll(got.Body)
+			s.Require().NoError(err)
+
+			m.Lock()
+			releases = append(releases, release)
+			m.Unlock()
 		}()
+	}
+	wg.Wait()
+
+	for _, release := range releases {
+		s.NoError(release())
 	}
 }
 
@@ -393,7 +402,11 @@ func (s *ClientTestSuite) TestStartDialForBlock() {
 }
 
 func (s *ClientTestSuite) TestDial() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
 	<-s.doListen(1, func(conn transport.Conn) {
+		defer wg.Done()
 		s.Equal(pipe.Addr{Name: "dialer"}, conn.RemoteAddr())
 	})
 

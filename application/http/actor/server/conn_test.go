@@ -11,6 +11,7 @@ import (
 	"network-stack/application/http/transfer"
 	"network-stack/application/util/uri"
 	iolib "network-stack/lib/io"
+	"network-stack/lib/pointer"
 	"network-stack/transport"
 	"network-stack/transport/pipe"
 	"sync"
@@ -83,8 +84,18 @@ func (s *ServeTestSuite) SetupTest() {
 func (s *ServeTestSuite) TestServeOnce() {
 	timeout := 10 * time.Millisecond
 
+	closed := make(chan struct{})
 	go func() {
-		defer s.clock.Add(timeout)
+		defer func() {
+			for {
+				select {
+				case <-closed:
+					return
+				default:
+					s.clock.Add(timeout)
+				}
+			}
+		}()
 		res, err := sendRequest(s.otherConn, s.defaultRequest.RawRequest())
 		s.Require().NoError(err)
 
@@ -101,13 +112,24 @@ func (s *ServeTestSuite) TestServeOnce() {
 	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
 	s.Nil(alt)
+	close(closed)
 }
 
 func (s *ServeTestSuite) TestServeConsecutive() {
 	timeout := 10 * time.Millisecond
 
+	closed := make(chan struct{})
 	go func() {
-		defer s.clock.Add(timeout)
+		defer func() {
+			for {
+				select {
+				case <-closed:
+					return
+				default:
+					s.clock.Add(timeout)
+				}
+			}
+		}()
 		for range 3 {
 			res, err := sendRequest(s.otherConn, s.defaultRequest.RawRequest())
 			s.Require().NoError(err)
@@ -125,6 +147,7 @@ func (s *ServeTestSuite) TestServeConsecutive() {
 	alt, err := s.conn.serve(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
 	s.Nil(alt)
+	close(closed)
 }
 
 func (s *ServeTestSuite) TestServeGracefulClose() {
@@ -414,10 +437,8 @@ func (s *ReadRequestTestSuite) TestReadRequest() {
 }
 
 func (s *ReadRequestTestSuite) TestReadRequestContentLength() {
-	l := uint(5)
-
 	expected := s.defaultRequest
-	expected.ContentLength = &l
+	expected.ContentLength = pointer.To(uint(5))
 
 	done := s.startWritingRequest(expected)
 

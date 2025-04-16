@@ -142,12 +142,12 @@ var ErrIdleTimeoutExceeded = errors.New("idle timeout exceeded")
 func (c *conn) waitForRequest(ctx context.Context) error {
 	timeout := c.opts.Serve.Timeout.IdleTimeout
 
+	if timeout > 0 {
+		c.con.SetReadDeadLine(c.clock.Now().Add(timeout))
+	}
+
 	signal := make(chan error, 1)
 	go func() {
-		if timeout > 0 {
-			c.con.SetReadDeadLine(c.clock.Now().Add(timeout))
-		}
-
 		_, err := c.con.Read(nil)
 		if errors.Is(err, transport.ErrDeadLineExceeded) {
 			err = ErrIdleTimeoutExceeded

@@ -95,8 +95,18 @@ func (s *ServePipelineTestSuite) SetupTest() {
 func (s *ServePipelineTestSuite) TestServePipelined() {
 	timeout := 10 * time.Millisecond
 
+	closed := make(chan struct{})
 	go func() {
-		defer s.clock.Add(timeout)
+		defer func() {
+			for {
+				select {
+				case <-closed:
+					return
+				default:
+					s.clock.Add(timeout)
+				}
+			}
+		}()
 		enc := http.NewRequestEncoder(s.otherConn, http.EncodeOptions{})
 		dec := http.NewResponseDecoder(iolib.NewUntilReader(s.otherConn), http.DecodeOptions{})
 
@@ -120,9 +130,11 @@ func (s *ServePipelineTestSuite) TestServePipelined() {
 	alt, err := s.conn.servePipeine(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
 	s.Nil(alt)
+	close(closed)
 }
 
 func (s *ServePipelineTestSuite) TestInvalidRequestAfterValid() {
+	// TODO: Flaky. should change the logic to properly use mutext on worker.
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -183,8 +195,18 @@ func (s *ServePipelineTestSuite) TestUnsafeMethod() {
 		return s.defaultHandle(c, request)
 	}
 
+	closed := make(chan struct{})
 	go func() {
-		defer s.clock.Add(timeout)
+		defer func() {
+			for {
+				select {
+				case <-closed:
+					return
+				default:
+					s.clock.Add(timeout)
+				}
+			}
+		}()
 
 		enc := http.NewRequestEncoder(s.otherConn, http.EncodeOptions{})
 		dec := http.NewResponseDecoder(iolib.NewUntilReader(s.otherConn), http.DecodeOptions{})
@@ -214,6 +236,7 @@ func (s *ServePipelineTestSuite) TestUnsafeMethod() {
 	alt, err := s.conn.servePipeine(s.ctx)
 	s.ErrorIs(err, ErrIdleTimeoutExceeded)
 	s.Nil(alt)
+	close(closed)
 }
 
 type PipelineReceiverTestSuite struct {
@@ -344,7 +367,9 @@ func (s *PipelineReceiverTestSuite) TestReadError() {
 
 	s.receiver.start(s.ctx, &wg)
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		s.receiver.signal <- struct{}{}
 
 		_, err := s.src.Write([]byte("AYO THIS IS HTTP\r\n"))
@@ -439,7 +464,10 @@ func (s *PipelineSenderTestSuite) TestSendError() {
 	s.sender.start(&wg)
 
 	s.sender.stream <- &s.defaultResponse
+
+	time.Sleep(50 * time.Millisecond)
 	s.clock.Add(time.Millisecond) // Timeout.
+
 	s.ErrorIs(<-s.sender.errchan, transport.ErrDeadLineExceeded)
 
 	for range 3 {

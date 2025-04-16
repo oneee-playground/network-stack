@@ -83,10 +83,10 @@ func (c *conn) roundtrip(ctx context.Context, request *semantic.Request) (*seman
 	defer close(session.callerQuit)
 
 	// Write request first.
+	c.mu.Lock()
 	c.writePipe <- session
 
 	// Wait for response.
-	c.mu.Lock()
 	c.ongoings.Enqueue(session) // ignore success as it will always succeed.
 	c.mu.Unlock()
 
@@ -106,16 +106,17 @@ func (c *conn) readLoop() {
 
 	stop := false
 	for !stop {
+		if _, err := c.con.Read(nil); err != nil {
+			c.close(errors.Wrap(err, "waiting for response from server"))
+			return
+		}
+
 		c.mu.Lock()
 		if c.isAlt {
 			// Now requests won't be received.
 			stop = true
 		}
 		c.mu.Unlock()
-		if _, err := c.con.Read(nil); err != nil {
-			c.close(errors.Wrap(err, "waiting for response from server"))
-			return
-		}
 
 		c.mu.Lock()
 		session, err := c.ongoings.Dequeue()
@@ -156,14 +157,6 @@ func (c *conn) readLoop() {
 			c.close(errors.Wrap(err, "reading body"))
 			return
 		}
-
-		c.mu.Lock()
-		if c.isAlt {
-			// Now requests won't be received.
-			c.mu.Unlock()
-			break
-		}
-		c.mu.Unlock()
 	}
 }
 
