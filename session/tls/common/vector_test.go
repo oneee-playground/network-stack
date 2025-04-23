@@ -9,11 +9,11 @@ import (
 
 const mockVectorMinLen = 2
 
-type MockVector struct {
+type mockVector struct {
 	data []byte
 }
 
-func (m MockVector) FromBytes(b []byte) (VerctorConv, []byte, error) {
+func (m mockVector) FromBytes(b []byte) (VerctorConv, []byte, error) {
 	if len(b) < mockVectorMinLen {
 		return nil, nil, ErrVectorShort
 	}
@@ -21,13 +21,13 @@ func (m MockVector) FromBytes(b []byte) (VerctorConv, []byte, error) {
 	return m, b[mockVectorMinLen:], nil
 }
 
-func (m MockVector) Bytes() []byte {
+func (m mockVector) Bytes() []byte {
 	return m.data
 }
 
 func TestVector(t *testing.T) {
-	mock1 := &MockVector{data: []byte{0x01, 0x02}}
-	mock2 := &MockVector{data: []byte{0x03, 0x04}}
+	mock1 := mockVector{data: []byte{0x01, 0x02}}
+	mock2 := mockVector{data: []byte{0x03, 0x04}}
 
 	data := ToVector(1, []VerctorConv{mock1, mock2})
 	expected := []byte{
@@ -37,7 +37,7 @@ func TestVector(t *testing.T) {
 	}
 	require.Equal(t, expected, data)
 
-	result, rest, err := FromVector[MockVector](1, data, false)
+	result, rest, err := FromVector[mockVector](1, data, false)
 	assert.NoError(t, err)
 	assert.Empty(t, rest)
 	assert.Equal(t, 2, len(result))
@@ -56,7 +56,7 @@ func TestVectorOpaque(t *testing.T) {
 	opaque, rest, err := FromVectorOpaque(1, data, false)
 	assert.NoError(t, err)
 	assert.Empty(t, rest)
-	assert.Equal(t, data, opaque)
+	assert.Equal(t, data[1:], opaque)
 }
 
 func TestGetLength(t *testing.T) {
