@@ -2,7 +2,9 @@ package extension
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
+	iolib "network-stack/lib/io"
 	"network-stack/session/tls/common"
 
 	"github.com/pkg/errors"
@@ -59,6 +61,35 @@ type rawExtension struct {
 	data   []byte
 }
 
+var _ common.VerctorConv = rawExtension{}
+
+func (r rawExtension) Bytes() []byte {
+	buf := bytes.NewBuffer(nil)
+
+	buf.Write(r.t.Bytes())
+	buf.Write(common.ToBigEndianBytes(uint(r.length), 2))
+	buf.Write(r.data)
+
+	return buf.Bytes()
+}
+
+func (r rawExtension) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+	if len(b) < 2 {
+		return nil, nil, errors.Wrap(common.ErrVectorShort, "reading extension type")
+	}
+
+	r.t = ExtensionType(binary.BigEndian.Uint16(b[0:2]))
+	rest = b[2:]
+
+	r.data, rest, err = common.FromVectorOpaque(2, rest, true)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "reading extension data")
+	}
+	r.length = uint16(len(r.data))
+
+	return r, rest, nil
+}
+
 func ExtensionsFrom(exts ...Extension) Extensions {
 	raws := make([]rawExtension, len(exts))
 	for i, ext := range exts {
@@ -69,6 +100,32 @@ func ExtensionsFrom(exts ...Extension) Extensions {
 		}
 	}
 	return Extensions{raws: raws}
+}
+
+func ExtensionsFromRaw(b []byte) (Extensions, error) {
+	extensions, _, err := common.FromVector[rawExtension](2, b, false)
+	if err != nil {
+		return Extensions{}, errors.Wrap(err, "parsing extensions")
+	}
+
+	return Extensions{raws: extensions}, nil
+}
+
+func ExtensionsFromReader(r io.Reader) (Extensions, error) {
+	lenBuf := make([]byte, 2)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return Extensions{}, errors.Wrap(err, "reading length")
+	}
+
+	buf := bytes.NewBuffer(lenBuf)
+
+	r = iolib.LimitReader(r, uint(binary.BigEndian.Uint16(lenBuf)))
+
+	if _, err := buf.ReadFrom(r); err != nil {
+		return Extensions{}, errors.Wrap(err, "reading data")
+	}
+
+	return ExtensionsFromRaw(buf.Bytes())
 }
 
 // Length doesn't include the length of the length field (2 bytes) .

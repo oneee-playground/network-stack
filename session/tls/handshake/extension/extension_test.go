@@ -51,6 +51,45 @@ func TestExtensions(t *testing.T) {
 	assert.Equal(t, expectedLength, extensions.Length())
 }
 
+var testRawExtensions = []byte{
+	0x00, 0x15, // Total length (21 bytes)
+	0x00, 0x00, // Extension type (TypeServerName)
+	0x00, 0x0b, // Length (11 bytes)
+	'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', // Data
+	0x00, 0x0a, // Extension type (TypeSupportedGroups)
+	0x00, 0x02, // Length (2 bytes)
+	0x00, 0x1d, // Data
+}
+
+func TestExtensionsFromRaw(t *testing.T) {
+	// Call ExtensionsFromRaw
+	extensions, err := ExtensionsFromRaw(testRawExtensions)
+	require.NoError(t, err)
+
+	// Validate the parsed extensions
+	assert.Equal(t, 2, len(extensions.raws))
+	assert.Equal(t, TypeServerName, extensions.raws[0].t)
+	assert.Equal(t, []byte("example.com"), extensions.raws[0].data)
+	assert.Equal(t, TypeSupportedGroups, extensions.raws[1].t)
+	assert.Equal(t, []byte{0x00, 0x1d}, extensions.raws[1].data)
+}
+
+func TestExtensionsFromReader(t *testing.T) {
+	// Create a reader for the raw data
+	reader := bytes.NewReader(testRawExtensions)
+
+	// Call ExtensionsFromReader
+	extensions, err := ExtensionsFromReader(reader)
+	require.NoError(t, err)
+
+	// Validate the parsed extensions
+	assert.Equal(t, 2, len(extensions.raws))
+	assert.Equal(t, TypeServerName, extensions.raws[0].t)
+	assert.Equal(t, []byte("example.com"), extensions.raws[0].data)
+	assert.Equal(t, TypeSupportedGroups, extensions.raws[1].t)
+	assert.Equal(t, []byte{0x00, 0x1d}, extensions.raws[1].data)
+}
+
 func TestExtensionsWriteTo(t *testing.T) {
 	ext1 := mockExtension{extType: TypeServerName, data: []byte("example.com")}
 	ext2 := mockExtension{extType: TypeSupportedGroups, data: []byte{0x00, 0x1d}}
