@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	iolib "network-stack/lib/io"
 	"network-stack/session/tls/common"
 
 	"github.com/pkg/errors"
@@ -109,23 +108,6 @@ func ExtensionsFromRaw(b []byte) (Extensions, error) {
 	}
 
 	return Extensions{raws: extensions}, nil
-}
-
-func ExtensionsFromReader(r io.Reader) (Extensions, error) {
-	lenBuf := make([]byte, 2)
-	if _, err := io.ReadFull(r, lenBuf); err != nil {
-		return Extensions{}, errors.Wrap(err, "reading length")
-	}
-
-	buf := bytes.NewBuffer(lenBuf)
-
-	r = iolib.LimitReader(r, uint(binary.BigEndian.Uint16(lenBuf)))
-
-	if _, err := buf.ReadFrom(r); err != nil {
-		return Extensions{}, errors.Wrap(err, "reading data")
-	}
-
-	return ExtensionsFromRaw(buf.Bytes())
 }
 
 // Length doesn't include the length of the length field (2 bytes) .
