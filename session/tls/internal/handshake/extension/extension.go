@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -60,27 +60,27 @@ type rawExtension struct {
 	data   []byte
 }
 
-var _ common.VerctorConv = rawExtension{}
+var _ util.VerctorConv = rawExtension{}
 
 func (r rawExtension) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(r.t.Bytes())
-	buf.Write(common.ToBigEndianBytes(uint(r.length), 2))
+	buf.Write(util.ToBigEndianBytes(uint(r.length), 2))
 	buf.Write(r.data)
 
 	return buf.Bytes()
 }
 
-func (r rawExtension) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+func (r rawExtension) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, errors.Wrap(common.ErrVectorShort, "reading extension type")
+		return nil, nil, errors.Wrap(util.ErrVectorShort, "reading extension type")
 	}
 
 	r.t = ExtensionType(binary.BigEndian.Uint16(b[0:2]))
 	rest = b[2:]
 
-	r.data, rest, err = common.FromVectorOpaque(2, rest, true)
+	r.data, rest, err = util.FromVectorOpaque(2, rest, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading extension data")
 	}
@@ -102,7 +102,7 @@ func ExtensionsFrom(exts ...Extension) Extensions {
 }
 
 func ExtensionsFromRaw(b []byte) (Extensions, error) {
-	extensions, _, err := common.FromVector[rawExtension](2, b, false)
+	extensions, _, err := util.FromVector[rawExtension](2, b, false)
 	if err != nil {
 		return Extensions{}, errors.Wrap(err, "parsing extensions")
 	}
@@ -123,11 +123,11 @@ func (e Extensions) WriteTo(w io.Writer) (n int64, err error) {
 	buf := bytes.NewBuffer(nil)
 
 	// Write total length.
-	buf.Write(common.ToBigEndianBytes(uint(e.Length()), 2))
+	buf.Write(util.ToBigEndianBytes(uint(e.Length()), 2))
 
 	for _, raw := range e.raws {
 		buf.Write(raw.t.Bytes())
-		buf.Write(common.ToBigEndianBytes(uint(raw.length), 2))
+		buf.Write(util.ToBigEndianBytes(uint(raw.length), 2))
 		buf.Write(raw.data)
 	}
 

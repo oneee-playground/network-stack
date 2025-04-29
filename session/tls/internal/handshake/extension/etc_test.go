@@ -3,7 +3,7 @@ package extension
 import (
 	"testing"
 
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/common"
 )
 
 func TestSupportedVersionsCH(t *testing.T) {

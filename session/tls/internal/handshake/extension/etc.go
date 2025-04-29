@@ -2,7 +2,8 @@ package extension
 
 import (
 	"encoding/binary"
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -17,7 +18,7 @@ func (s *SupportedVersionsCH) ExtensionType() ExtensionType {
 }
 
 func (s *SupportedVersionsCH) Data() []byte {
-	return common.ToVector(1, s.Versions)
+	return util.ToVector(1, s.Versions)
 }
 
 func (s *SupportedVersionsCH) Length() uint16 {
@@ -25,7 +26,7 @@ func (s *SupportedVersionsCH) Length() uint16 {
 }
 
 func (s *SupportedVersionsCH) fillFrom(raw rawExtension) error {
-	out, _, err := common.FromVector[common.Version](1, raw.data, false)
+	out, _, err := util.FromVector[common.Version](1, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading versions")
 	}
@@ -71,7 +72,7 @@ func (c *Cookie) ExtensionType() ExtensionType {
 }
 
 func (c *Cookie) Data() []byte {
-	return common.ToVectorOpaque(2, c.Cookie)
+	return util.ToVectorOpaque(2, c.Cookie)
 }
 
 func (c *Cookie) Length() uint16 {
@@ -79,7 +80,7 @@ func (c *Cookie) Length() uint16 {
 }
 
 func (c *Cookie) fillFrom(raw rawExtension) error {
-	data, _, err := common.FromVectorOpaque(2, raw.data, false)
+	data, _, err := util.FromVectorOpaque(2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading cookie")
 	}
@@ -120,13 +121,13 @@ type EarlyDataNST struct { // New session ticket
 var _ Extension = (*EarlyDataNST)(nil)
 
 func (e *EarlyDataNST) ExtensionType() ExtensionType { return TypeEarlyData }
-func (e *EarlyDataNST) Data() []byte                 { return common.ToBigEndianBytes(uint(e.MaxEarlyDataSize), 4) }
+func (e *EarlyDataNST) Data() []byte                 { return util.ToBigEndianBytes(uint(e.MaxEarlyDataSize), 4) }
 func (e *EarlyDataNST) Length() uint16               { return 4 }
 func (e *EarlyDataNST) fillFrom(raw rawExtension) error {
 	if len(raw.data) != 4 {
 		return errors.New("invalid length")
 	}
-	
+
 	e.MaxEarlyDataSize = binary.BigEndian.Uint32(raw.data)
 	return nil
 }

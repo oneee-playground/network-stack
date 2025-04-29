@@ -3,7 +3,7 @@ package extension
 import (
 	"bytes"
 	"encoding/binary"
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -18,9 +18,9 @@ func (n NamedGroup) Bytes() []byte {
 	return b
 }
 
-func (NamedGroup) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+func (NamedGroup) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, common.ErrVectorShort
+		return nil, nil, util.ErrVectorShort
 	}
 
 	out = NamedGroup(binary.BigEndian.Uint16(b))
@@ -28,7 +28,7 @@ func (NamedGroup) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err 
 	return out, b[2:], nil
 }
 
-var _ common.VerctorConv = NamedGroup(0)
+var _ util.VerctorConv = NamedGroup(0)
 
 const (
 	// Elliptic Curve Groups (ECDHE)
@@ -61,7 +61,7 @@ func (s *SupportedGroups) ExtensionType() ExtensionType {
 }
 
 func (s *SupportedGroups) Data() []byte {
-	return common.ToVector(2, s.NamedGroupList)
+	return util.ToVector(2, s.NamedGroupList)
 }
 
 func (s *SupportedGroups) Length() uint16 {
@@ -69,7 +69,7 @@ func (s *SupportedGroups) Length() uint16 {
 }
 
 func (s *SupportedGroups) fillFrom(raw rawExtension) error {
-	namedGroups, _, err := common.FromVector[NamedGroup](2, raw.data, false)
+	namedGroups, _, err := util.FromVector[NamedGroup](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading named group list")
 	}
@@ -84,24 +84,24 @@ type KeyShareEntry struct {
 	KeyExchange []byte
 }
 
-var _ common.VerctorConv = KeyShareEntry{}
+var _ util.VerctorConv = KeyShareEntry{}
 
 func (k KeyShareEntry) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(k.Group.Bytes())
-	buf.Write(common.ToVectorOpaque(2, k.KeyExchange))
+	buf.Write(util.ToVectorOpaque(2, k.KeyExchange))
 
 	return buf.Bytes()
 }
 
-func (k KeyShareEntry) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+func (k KeyShareEntry) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	group, rest, err := k.Group.FromBytes(b)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading group")
 	}
 
-	keyExchange, rest, err := common.FromVectorOpaque(2, rest, true)
+	keyExchange, rest, err := util.FromVectorOpaque(2, rest, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading key exchange")
 	}
@@ -117,7 +117,7 @@ func (k *KeyShareCH) ExtensionType() ExtensionType {
 }
 
 func (k *KeyShareCH) Data() []byte {
-	return common.ToVector(2, k.KeyShares)
+	return util.ToVector(2, k.KeyShares)
 }
 
 func (k *KeyShareCH) Length() uint16 {
@@ -130,7 +130,7 @@ func (k *KeyShareCH) Length() uint16 {
 }
 
 func (k *KeyShareCH) fillFrom(raw rawExtension) error {
-	entries, _, err := common.FromVector[KeyShareEntry](2, raw.data, false)
+	entries, _, err := util.FromVector[KeyShareEntry](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading key shares")
 	}
@@ -202,15 +202,15 @@ func (k *KeyShareSH) fillFrom(raw rawExtension) error {
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.9
 type PskKeyExchangeMode uint8
 
-var _ common.VerctorConv = PskKeyExchangeMode(0)
+var _ util.VerctorConv = PskKeyExchangeMode(0)
 
 func (p PskKeyExchangeMode) Bytes() []byte {
 	return []byte{byte(p)}
 }
 
-func (p PskKeyExchangeMode) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+func (p PskKeyExchangeMode) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	if len(b) < 1 {
-		return nil, nil, common.ErrVectorShort
+		return nil, nil, util.ErrVectorShort
 	}
 
 	out = PskKeyExchangeMode(b[0])
@@ -233,7 +233,7 @@ func (k *PskKeyExchangeModes) ExtensionType() ExtensionType {
 }
 
 func (k *PskKeyExchangeModes) Data() []byte {
-	return common.ToVector(1, k.KeModes)
+	return util.ToVector(1, k.KeModes)
 }
 
 func (k *PskKeyExchangeModes) Length() uint16 {
@@ -241,7 +241,7 @@ func (k *PskKeyExchangeModes) Length() uint16 {
 }
 
 func (k *PskKeyExchangeModes) fillFrom(raw rawExtension) error {
-	modes, _, err := common.FromVector[PskKeyExchangeMode](1, raw.data, false)
+	modes, _, err := util.FromVector[PskKeyExchangeMode](1, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading modes")
 	}
@@ -258,7 +258,7 @@ type PreSharedKeySH struct {
 var _ Extension = (*PreSharedKeySH)(nil)
 
 func (p *PreSharedKeySH) ExtensionType() ExtensionType { return TypePreSharedKey }
-func (p *PreSharedKeySH) Data() []byte                 { return common.ToBigEndianBytes(uint(p.SelectedIdentity), 2) }
+func (p *PreSharedKeySH) Data() []byte                 { return util.ToBigEndianBytes(uint(p.SelectedIdentity), 2) }
 func (p *PreSharedKeySH) Length() uint16               { return 2 }
 func (p *PreSharedKeySH) fillFrom(raw rawExtension) error {
 	if len(raw.data) != 2 {
@@ -279,25 +279,25 @@ type PSKIdentity struct {
 	ObfuscatedTicketAge uint32
 }
 
-var _ common.VerctorConv = PSKIdentity{}
+var _ util.VerctorConv = PSKIdentity{}
 
 func (p PSKIdentity) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
-	buf.Write(common.ToVectorOpaque(2, p.Identity))
-	buf.Write(common.ToBigEndianBytes(uint(p.ObfuscatedTicketAge), 4))
+	buf.Write(util.ToVectorOpaque(2, p.Identity))
+	buf.Write(util.ToBigEndianBytes(uint(p.ObfuscatedTicketAge), 4))
 
 	return buf.Bytes()
 }
 
-func (p PSKIdentity) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
-	opaqueIDentity, rest, err := common.FromVectorOpaque(2, b, true)
+func (p PSKIdentity) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+	opaqueIDentity, rest, err := util.FromVectorOpaque(2, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading identity")
 	}
 
 	if len(rest) < 4 {
-		return nil, nil, errors.Wrap(common.ErrVectorShort, "reading ticket age")
+		return nil, nil, errors.Wrap(util.ErrVectorShort, "reading ticket age")
 	}
 
 	p.Identity = opaqueIDentity
@@ -308,12 +308,12 @@ func (p PSKIdentity) FromBytes(b []byte) (out common.VerctorConv, rest []byte, e
 
 type PSKBinderEntry []byte
 
-var _ common.VerctorConv = PSKBinderEntry{}
+var _ util.VerctorConv = PSKBinderEntry{}
 
-func (p PSKBinderEntry) Bytes() []byte { return common.ToVectorOpaque(1, p) }
+func (p PSKBinderEntry) Bytes() []byte { return util.ToVectorOpaque(1, p) }
 
-func (PSKBinderEntry) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
-	opaque, rest, err := common.FromVectorOpaque(1, b, true)
+func (PSKBinderEntry) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+	opaque, rest, err := util.FromVectorOpaque(1, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading binder entry")
 	}
@@ -328,8 +328,8 @@ func (p *PreSharedKeyCH) ExtensionType() ExtensionType { return TypePreSharedKey
 func (p *PreSharedKeyCH) Data() []byte {
 	buf := bytes.NewBuffer(nil)
 
-	buf.Write(common.ToVector(2, p.Identities))
-	buf.Write(common.ToVector(2, p.Binders))
+	buf.Write(util.ToVector(2, p.Identities))
+	buf.Write(util.ToVector(2, p.Binders))
 
 	return buf.Bytes()
 }
@@ -347,12 +347,12 @@ func (p *PreSharedKeyCH) Length() uint16 {
 }
 
 func (p *PreSharedKeyCH) fillFrom(raw rawExtension) error {
-	identities, rest, err := common.FromVector[PSKIdentity](2, raw.data, true)
+	identities, rest, err := util.FromVector[PSKIdentity](2, raw.data, true)
 	if err != nil {
 		return errors.Wrap(err, "reading identities")
 	}
 
-	binders, _, err := common.FromVector[PSKBinderEntry](2, rest, false)
+	binders, _, err := util.FromVector[PSKBinderEntry](2, rest, false)
 	if err != nil {
 		return errors.Wrap(err, "reading binders")
 	}

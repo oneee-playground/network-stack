@@ -2,7 +2,7 @@ package extension
 
 import (
 	"bytes"
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -14,9 +14,9 @@ type CertAuthorities struct {
 
 type DistinguishedName []byte
 
-func (d DistinguishedName) Bytes() []byte { return common.ToVectorOpaque(2, d) }
-func (DistinguishedName) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
-	opaque, rest, err := common.FromVectorOpaque(2, b, true)
+func (d DistinguishedName) Bytes() []byte { return util.ToVectorOpaque(2, d) }
+func (DistinguishedName) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+	opaque, rest, err := util.FromVectorOpaque(2, b, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -24,7 +24,7 @@ func (DistinguishedName) FromBytes(b []byte) (out common.VerctorConv, rest []byt
 	return DistinguishedName(opaque), rest, nil
 }
 
-var _ common.VerctorConv = (DistinguishedName)(nil)
+var _ util.VerctorConv = (DistinguishedName)(nil)
 
 var _ Extension = (*CertAuthorities)(nil)
 
@@ -33,7 +33,7 @@ func (c *CertAuthorities) ExtensionType() ExtensionType {
 }
 
 func (c *CertAuthorities) Data() []byte {
-	return common.ToVector(2, c.Authorities)
+	return util.ToVector(2, c.Authorities)
 }
 
 func (c *CertAuthorities) Length() uint16 {
@@ -47,7 +47,7 @@ func (c *CertAuthorities) Length() uint16 {
 }
 
 func (c *CertAuthorities) fillFrom(raw rawExtension) error {
-	out, _, err := common.FromVector[DistinguishedName](2, raw.data, false)
+	out, _, err := util.FromVector[DistinguishedName](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading authorities")
 	}
@@ -69,8 +69,8 @@ type OIDFilter struct {
 func (o *OIDFilter) data() []byte {
 	buf := bytes.NewBuffer(nil)
 
-	buf.Write(common.ToVectorOpaque(1, o.CertExtensionOID))
-	buf.Write(common.ToVectorOpaque(2, o.CertExtensionValues))
+	buf.Write(util.ToVectorOpaque(1, o.CertExtensionOID))
+	buf.Write(util.ToVectorOpaque(2, o.CertExtensionValues))
 
 	return buf.Bytes()
 }
@@ -85,13 +85,13 @@ func (o *OIDFilter) length() uint16 {
 
 func (o OIDFilter) Bytes() []byte { return o.data() }
 
-func (o OIDFilter) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
-	opaqueOID, rest, err := common.FromVectorOpaque(1, b, true)
+func (o OIDFilter) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+	opaqueOID, rest, err := util.FromVectorOpaque(1, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading oid")
 	}
 
-	opaqueValues, rest, err := common.FromVectorOpaque(2, rest, true)
+	opaqueValues, rest, err := util.FromVectorOpaque(2, rest, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading values")
 	}
@@ -102,7 +102,7 @@ func (o OIDFilter) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err
 	return o, rest, nil
 }
 
-var _ common.VerctorConv = (*OIDFilter)(nil)
+var _ util.VerctorConv = (*OIDFilter)(nil)
 
 var _ Extension = (*OIDFilters)(nil)
 
@@ -111,7 +111,7 @@ func (o *OIDFilters) ExtensionType() ExtensionType {
 }
 
 func (o *OIDFilters) Data() []byte {
-	return common.ToVector(2, o.Filters)
+	return util.ToVector(2, o.Filters)
 }
 
 func (o *OIDFilters) Length() uint16 {
@@ -124,7 +124,7 @@ func (o *OIDFilters) Length() uint16 {
 }
 
 func (o *OIDFilters) fillFrom(raw rawExtension) error {
-	out, _, err := common.FromVector[OIDFilter](2, raw.data, false)
+	out, _, err := util.FromVector[OIDFilter](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading filters")
 	}

@@ -1,4 +1,4 @@
-package common
+package util
 
 func ToBigEndianBytes(n uint, byteLen uint8) []byte {
 	if byteLen > 8 {

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"network-stack/session/tls/internal/util"
 	"strconv"
 )
 
@@ -25,9 +26,9 @@ func NewVersion(b [2]uint8) Version {
 	return Version(v)
 }
 
-func (Version) FromBytes(b []byte) (out VerctorConv, rest []byte, err error) {
+func (Version) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, ErrVectorShort
+		return nil, nil, util.ErrVectorShort
 	}
 
 	out = NewVersion([2]uint8(b))
@@ -53,6 +54,20 @@ func (v Version) String() string {
 	return strconv.FormatUint(uint64(v), 16)
 }
 
-var _ (VerctorConv) = Version(0)
+var _ (util.VerctorConv) = Version(0)
 
 type CipherSuite [2]uint8
+
+func (CipherSuite) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+	if len(b) < 2 {
+		return nil, nil, util.ErrVectorShort
+	}
+
+	out = CipherSuite([2]uint8(b))
+
+	return out, b[2:], nil
+}
+
+func (c CipherSuite) Bytes() []byte {
+	return c[:]
+}

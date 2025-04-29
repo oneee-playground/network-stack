@@ -2,7 +2,7 @@ package extension
 
 import (
 	"encoding/binary"
-	"network-stack/session/tls/common"
+	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -17,9 +17,9 @@ func (s SigScheme) Bytes() []byte {
 	return b
 }
 
-func (s SigScheme) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err error) {
+func (s SigScheme) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, common.ErrVectorShort
+		return nil, nil, util.ErrVectorShort
 	}
 
 	s = SigScheme(binary.BigEndian.Uint16(b))
@@ -27,7 +27,7 @@ func (s SigScheme) FromBytes(b []byte) (out common.VerctorConv, rest []byte, err
 	return s, b[2:], nil
 }
 
-var _ common.VerctorConv = SigScheme(0)
+var _ util.VerctorConv = SigScheme(0)
 
 const (
 	// RSASSA-PKCS1-v1_5 algorithms
@@ -74,7 +74,7 @@ func (s *signatureSchemeList) ExtensionType() ExtensionType {
 }
 
 func (s *signatureSchemeList) Data() []byte {
-	return common.ToVector(2, s.SupportedAlogs)
+	return util.ToVector(2, s.SupportedAlogs)
 }
 
 func (s *signatureSchemeList) Length() uint16 {
@@ -82,7 +82,7 @@ func (s *signatureSchemeList) Length() uint16 {
 }
 
 func (s *signatureSchemeList) fillFrom(raw rawExtension) error {
-	schemes, _, err := common.FromVector[SigScheme](2, raw.data, false)
+	schemes, _, err := util.FromVector[SigScheme](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading supported algorithms")
 	}

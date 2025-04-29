@@ -25,7 +25,8 @@ func (m *mockHandshake) fillFrom(b []byte) error    { m.d = b; return nil }
 type HandshakeCodecTestSuite struct {
 	suite.Suite
 
-	codec  *handshakeCodec
+	enc    *Encoder
+	dec    *Decoder
 	c1, c2 transport.Conn
 }
 
@@ -36,7 +37,8 @@ func TestHandshakeCodecTestSuite(t *testing.T) {
 func (s *HandshakeCodecTestSuite) SetupTest() {
 	s.c1, s.c2 = pipe.NewPair("a", "b", clock.New())
 
-	s.codec = newHandshakeCodec(s.c1)
+	s.enc = NewEncoder(s.c1)
+	s.dec = NewDecoder(s.c1)
 }
 
 func (s *HandshakeCodecTestSuite) TestEncodeDecode() {
@@ -48,24 +50,25 @@ func (s *HandshakeCodecTestSuite) TestEncodeDecode() {
 	go func() {
 		defer wg.Done()
 
-		codec := newHandshakeCodec(s.c2)
+		dec := NewDecoder(s.c2)
+		enc := NewEncoder(s.c2)
 
 		// Decode the handshake message
 		decoded := &mockHandshake{typ: 0}
-		s.Require().NoError(codec.decode(decoded))
+		s.Require().NoError(dec.Decode(decoded))
 		s.Equal(orig.typ, decoded.typ)
 		s.Equal(orig.d, decoded.d)
 
 		// Encode the handshake message
-		s.Require().NoError(codec.encode(orig))
+		s.Require().NoError(enc.Encode(orig))
 	}()
 
 	// Encode the handshake message
-	s.Require().NoError(s.codec.encode(orig))
+	s.Require().NoError(s.enc.Encode(orig))
 
 	// Decode the handshake message
 	decoded := &mockHandshake{typ: 0}
-	s.Require().NoError(s.codec.decode(decoded))
+	s.Require().NoError(s.dec.Decode(decoded))
 	s.Equal(orig.typ, decoded.typ)
 	s.Equal(orig.d, decoded.d)
 
@@ -79,15 +82,15 @@ func (s *HandshakeCodecTestSuite) TestUnexpectedType() {
 	go func() {
 		defer wg.Done()
 
-		codec := newHandshakeCodec(s.c2)
-		err := codec.encode(&mockHandshake{typ: 0, d: []byte("hey")})
+		enc := NewEncoder(s.c2)
+		err := enc.Encode(&mockHandshake{typ: 0, d: []byte("hey")})
 		s.ErrorIs(err, transport.ErrConnClosed)
 	}()
 
 	// Attempt to decode with a different handshake type
 	decoded := &mockHandshake{typ: 1}
-	err := s.codec.decode(decoded)
-	s.ErrorIs(err, errNotExpectedHandshakeType)
+	err := s.dec.Decode(decoded)
+	s.ErrorIs(err, ErrNotExpectedHandshakeType)
 	s.c1.Close()
 
 	wg.Wait()
