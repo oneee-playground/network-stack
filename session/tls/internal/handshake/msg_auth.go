@@ -25,7 +25,7 @@ type CertificateEntry struct {
 	Extensions extension.Extensions
 }
 
-var _ (util.VerctorConv) = CertificateEntry{}
+var _ (util.VectorConv) = CertificateEntry{}
 
 func (c CertificateEntry) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
@@ -36,7 +36,7 @@ func (c CertificateEntry) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (c CertificateEntry) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (c CertificateEntry) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	c.CertData, rest, err = util.FromVectorOpaque(3, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading cert data")

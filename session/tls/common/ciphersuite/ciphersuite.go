@@ -8,7 +8,7 @@ import (
 
 type ID [2]uint8
 
-func (ID) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (ID) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, util.ErrVectorShort
 	}

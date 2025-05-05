@@ -13,7 +13,7 @@ type mockVector struct {
 	data []byte
 }
 
-func (m mockVector) FromBytes(b []byte) (VerctorConv, []byte, error) {
+func (m mockVector) FromBytes(b []byte) (VectorConv, []byte, error) {
 	if len(b) < mockVectorMinLen {
 		return nil, nil, ErrVectorShort
 	}
@@ -29,7 +29,7 @@ func TestVector(t *testing.T) {
 	mock1 := mockVector{data: []byte{0x01, 0x02}}
 	mock2 := mockVector{data: []byte{0x03, 0x04}}
 
-	data := ToVector(1, []VerctorConv{mock1, mock2})
+	data := ToVector(1, []VectorConv{mock1, mock2})
 	expected := []byte{
 		0x04,       // Length (4 bytes total)
 		0x01, 0x02, // Mock 1 data

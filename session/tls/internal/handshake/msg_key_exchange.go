@@ -59,7 +59,7 @@ func (c *ClientHello) fillFrom(b []byte) (err error) {
 		return errors.New("insufficient data to read clientHello")
 	}
 
-	var v util.VerctorConv
+	var v util.VectorConv
 	v, b, _ = c.Version.FromBytes(b)
 	c.Version = v.(common.Version)
 
@@ -142,7 +142,7 @@ func (s *ServerHello) fillFrom(b []byte) (err error) {
 		return errors.New("insufficient data to read serverHello")
 	}
 
-	var v util.VerctorConv
+	var v util.VectorConv
 	v, b, err = s.Version.FromBytes(b)
 	if err != nil {
 		return errors.Wrap(err, "reading version")

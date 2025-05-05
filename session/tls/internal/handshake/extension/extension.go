@@ -61,7 +61,7 @@ type rawExtension struct {
 	data   []byte
 }
 
-var _ util.VerctorConv = rawExtension{}
+var _ util.VectorConv = rawExtension{}
 
 func (r rawExtension) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
@@ -73,7 +73,7 @@ func (r rawExtension) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (r rawExtension) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (r rawExtension) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, errors.Wrap(util.ErrVectorShort, "reading extension type")
 	}

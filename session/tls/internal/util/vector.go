@@ -9,14 +9,14 @@ import (
 
 var ErrVectorShort = errors.New("vector is short")
 
-type VerctorConv interface {
+type VectorConv interface {
 	// FromBytes returns the object itself that is filled from bytes.
-	FromBytes(b []byte) (out VerctorConv, rest []byte, err error)
+	FromBytes(b []byte) (out VectorConv, rest []byte, err error)
 	// ToBytes returns raw bytes containing its data.
 	Bytes() []byte
 }
 
-func FromVector[T VerctorConv](lenSize uint, b []byte, allowRemain bool) (_ []T, rest []byte, err error) {
+func FromVector[T VectorConv](lenSize uint, b []byte, allowRemain bool) (_ []T, rest []byte, err error) {
 	length, rest, err := getLength(lenSize, b)
 	if err != nil {
 		return nil, nil, err
@@ -75,7 +75,7 @@ func getLength(size uint, b []byte) (length uint, rest []byte, err error) {
 	return length, rest, nil
 }
 
-func ToVector[T VerctorConv](lenSize uint, data []T) []byte {
+func ToVector[T VectorConv](lenSize uint, data []T) []byte {
 	buf := bytes.NewBuffer(nil)
 
 	l := uint(0)

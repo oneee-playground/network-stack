@@ -18,7 +18,7 @@ func (n NamedGroup) Bytes() []byte {
 	return b
 }
 
-func (NamedGroup) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (NamedGroup) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, util.ErrVectorShort
 	}
@@ -28,7 +28,7 @@ func (NamedGroup) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err er
 	return out, b[2:], nil
 }
 
-var _ util.VerctorConv = NamedGroup(0)
+var _ util.VectorConv = NamedGroup(0)
 
 const (
 	// Elliptic Curve Groups (ECDHE)
@@ -84,7 +84,7 @@ type KeyShareEntry struct {
 	KeyExchange []byte
 }
 
-var _ util.VerctorConv = KeyShareEntry{}
+var _ util.VectorConv = KeyShareEntry{}
 
 func (k KeyShareEntry) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
@@ -95,7 +95,7 @@ func (k KeyShareEntry) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (k KeyShareEntry) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (k KeyShareEntry) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	group, rest, err := k.Group.FromBytes(b)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading group")
@@ -202,13 +202,13 @@ func (k *KeyShareSH) fillFrom(raw rawExtension) error {
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.9
 type PskKeyExchangeMode uint8
 
-var _ util.VerctorConv = PskKeyExchangeMode(0)
+var _ util.VectorConv = PskKeyExchangeMode(0)
 
 func (p PskKeyExchangeMode) Bytes() []byte {
 	return []byte{byte(p)}
 }
 
-func (p PskKeyExchangeMode) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (p PskKeyExchangeMode) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 1 {
 		return nil, nil, util.ErrVectorShort
 	}
@@ -279,7 +279,7 @@ type PSKIdentity struct {
 	ObfuscatedTicketAge uint32
 }
 
-var _ util.VerctorConv = PSKIdentity{}
+var _ util.VectorConv = PSKIdentity{}
 
 func (p PSKIdentity) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
@@ -290,7 +290,7 @@ func (p PSKIdentity) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (p PSKIdentity) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (p PSKIdentity) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	opaqueIDentity, rest, err := util.FromVectorOpaque(2, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading identity")
@@ -308,11 +308,11 @@ func (p PSKIdentity) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err
 
 type PSKBinderEntry []byte
 
-var _ util.VerctorConv = PSKBinderEntry{}
+var _ util.VectorConv = PSKBinderEntry{}
 
 func (p PSKBinderEntry) Bytes() []byte { return util.ToVectorOpaque(1, p) }
 
-func (PSKBinderEntry) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (PSKBinderEntry) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	opaque, rest, err := util.FromVectorOpaque(1, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading binder entry")

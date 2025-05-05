@@ -15,7 +15,7 @@ type CertAuthorities struct {
 type DistinguishedName []byte
 
 func (d DistinguishedName) Bytes() []byte { return util.ToVectorOpaque(2, d) }
-func (DistinguishedName) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (DistinguishedName) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	opaque, rest, err := util.FromVectorOpaque(2, b, true)
 	if err != nil {
 		return nil, nil, err
@@ -24,7 +24,7 @@ func (DistinguishedName) FromBytes(b []byte) (out util.VerctorConv, rest []byte,
 	return DistinguishedName(opaque), rest, nil
 }
 
-var _ util.VerctorConv = (DistinguishedName)(nil)
+var _ util.VectorConv = (DistinguishedName)(nil)
 
 var _ Extension = (*CertAuthorities)(nil)
 
@@ -85,7 +85,7 @@ func (o *OIDFilter) length() uint16 {
 
 func (o OIDFilter) Bytes() []byte { return o.data() }
 
-func (o OIDFilter) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (o OIDFilter) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	opaqueOID, rest, err := util.FromVectorOpaque(1, b, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading oid")
@@ -102,7 +102,7 @@ func (o OIDFilter) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err e
 	return o, rest, nil
 }
 
-var _ util.VerctorConv = (*OIDFilter)(nil)
+var _ util.VectorConv = (*OIDFilter)(nil)
 
 var _ Extension = (*OIDFilters)(nil)
 

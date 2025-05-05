@@ -17,7 +17,7 @@ func (s Scheme) Bytes() []byte {
 	return b
 }
 
-func (s Scheme) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (s Scheme) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, util.ErrVectorShort
 	}
@@ -27,7 +27,7 @@ func (s Scheme) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err erro
 	return s, b[2:], nil
 }
 
-var _ util.VerctorConv = Scheme(0)
+var _ util.VectorConv = Scheme(0)
 
 var schemes = make(map[Scheme]Algorithm)
 

@@ -26,7 +26,7 @@ func NewVersion(b [2]uint8) Version {
 	return Version(v)
 }
 
-func (Version) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
+func (Version) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, util.ErrVectorShort
 	}
@@ -54,4 +54,4 @@ func (v Version) String() string {
 	return strconv.FormatUint(uint64(v), 16)
 }
 
-var _ (util.VerctorConv) = Version(0)
+var _ (util.VectorConv) = Version(0)
