@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/signature"
 )
 
 func TestSupportedVersionsCH(t *testing.T) {
@@ -52,4 +53,30 @@ func TestEarlyDataEmpty(t *testing.T) {
 
 	testExtension(t, ch, new(EarlyDataCH), TypeEarlyData)
 	testExtension(t, ee, new(EarlyDataEE), TypeEarlyData)
+}
+
+func TestSignatureAlgos(t *testing.T) {
+	orig := &SignatureAlgos{
+		signatureSchemeList: signatureSchemeList{
+			SupportedAlogs: []signature.Scheme{
+				signature.Scheme_RSA_PKCS1_SHA256,
+				signature.Scheme_ECDSA_Secp256r1_SHA256,
+			},
+		},
+	}
+
+	testExtension(t, orig, new(SignatureAlgos), TypeSignatureAlgos)
+}
+
+func TestSignatureAlgosCert(t *testing.T) {
+	orig := &SignatureAlgosCert{
+		signatureSchemeList: signatureSchemeList{
+			SupportedAlogs: []signature.Scheme{
+				signature.Scheme_RSA_PSS_RSAE_SHA256,
+				signature.Scheme_Ed25519,
+			},
+		},
+	}
+
+	testExtension(t, orig, new(SignatureAlgosCert), TypeSignatureAlgosCert)
 }

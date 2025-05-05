@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"network-stack/session/tls/internal/util"
+	"slices"
 
 	"github.com/pkg/errors"
 )
@@ -144,4 +145,38 @@ func (e Extensions) Extract(v Extension) error {
 	}
 
 	return ErrNoMatchingExtension
+}
+
+func (e Extensions) Clone() Extensions {
+	return Extensions{raws: slices.Clone(e.raws)}
+}
+
+func (e *Extensions) Set(v Extension) {
+	input := rawExtension{
+		t:      v.ExtensionType(),
+		length: v.Length(),
+		data:   v.Data(),
+	}
+
+	for idx, raw := range e.raws {
+		if raw.t == input.t {
+			e.raws[idx] = input
+			return
+		}
+	}
+
+	// Not Found.
+	e.raws = append(e.raws, input)
+}
+
+func (e *Extensions) Remove(t ExtensionType) (found bool) {
+	for idx := 0; idx < len(e.raws); idx++ {
+		raw := e.raws[idx]
+		if raw.t == t {
+			e.raws = append(e.raws[:idx], e.raws[idx+1:]...)
+			return true
+		}
+	}
+
+	return false
 }

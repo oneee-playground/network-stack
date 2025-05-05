@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"network-stack/session/tls/internal/handshake/extension"
+	"network-stack/session/tls/signature"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +37,7 @@ func TestCertificate(t *testing.T) {
 
 func TestCertificateVerify(t *testing.T) {
 	input := &CertificateVerify{
-		Algorithm: extension.SigScheme_RSA_PKCS1_SHA256,
+		Algorithm: signature.Scheme_RSA_PKCS1_SHA256,
 		Signature: []byte{0x01, 0x02, 0x03},
 	}
 

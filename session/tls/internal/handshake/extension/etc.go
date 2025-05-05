@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"network-stack/session/tls/internal/common"
 	"network-stack/session/tls/internal/util"
+	"network-stack/session/tls/signature"
 
 	"github.com/pkg/errors"
 )
@@ -150,3 +151,41 @@ func (e *earlyDataEmpty) fillFrom(raw rawExtension) error {
 	}
 	return nil
 }
+
+// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.3
+type signatureSchemeList struct {
+	SupportedAlogs []signature.Scheme
+}
+
+func (s *signatureSchemeList) ExtensionType() ExtensionType {
+	panic("cannot be accessed")
+}
+
+func (s *signatureSchemeList) Data() []byte {
+	return util.ToVector(2, s.SupportedAlogs)
+}
+
+func (s *signatureSchemeList) Length() uint16 {
+	return 2 + uint16(len(s.SupportedAlogs)*2)
+}
+
+func (s *signatureSchemeList) fillFrom(raw rawExtension) error {
+	schemes, _, err := util.FromVector[signature.Scheme](2, raw.data, false)
+	if err != nil {
+		return errors.Wrap(err, "reading supported algorithms")
+	}
+
+	s.SupportedAlogs = schemes
+	return nil
+}
+
+var _ Extension = (*signatureSchemeList)(nil)
+
+type SignatureAlgos struct{ signatureSchemeList }
+type SignatureAlgosCert struct{ signatureSchemeList }
+
+var _ Extension = (*SignatureAlgos)(nil)
+var _ Extension = (*SignatureAlgosCert)(nil)
+
+func (s *SignatureAlgos) ExtensionType() ExtensionType     { return TypeSignatureAlgos }
+func (s *SignatureAlgosCert) ExtensionType() ExtensionType { return TypeSignatureAlgosCert }

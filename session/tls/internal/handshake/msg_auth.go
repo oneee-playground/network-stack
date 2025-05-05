@@ -6,6 +6,7 @@ import (
 	"network-stack/lib/types"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util"
+	"network-stack/session/tls/signature"
 
 	"github.com/pkg/errors"
 )
@@ -97,7 +98,7 @@ func (c *Certificate) fillFrom(b []byte) (err error) {
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.3
 type CertificateVerify struct {
-	Algorithm extension.SigScheme
+	Algorithm signature.Scheme
 	Signature []byte
 }
 
@@ -127,7 +128,7 @@ func (c *CertificateVerify) fillFrom(b []byte) (err error) {
 		return errors.New("insufficient data to read algorithm")
 	}
 
-	c.Algorithm = extension.SigScheme(binary.BigEndian.Uint16(b[:2]))
+	c.Algorithm = signature.Scheme(binary.BigEndian.Uint16(b[:2]))
 	b = b[2:]
 
 	c.Signature, _, err = util.FromVectorOpaque(2, b, false)
