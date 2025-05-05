@@ -3,8 +3,8 @@ package extension
 import (
 	"testing"
 
-	"network-stack/session/tls/internal/common"
-	"network-stack/session/tls/signature"
+	"network-stack/session/tls/common"
+	"network-stack/session/tls/common/signature"
 )
 
 func TestSupportedVersionsCH(t *testing.T) {

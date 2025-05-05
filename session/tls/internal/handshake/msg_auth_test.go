@@ -3,8 +3,8 @@ package handshake
 import (
 	"testing"
 
+	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/handshake/extension"
-	"network-stack/session/tls/signature"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

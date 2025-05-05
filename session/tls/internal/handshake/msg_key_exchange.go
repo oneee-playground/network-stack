@@ -3,7 +3,8 @@ package handshake
 import (
 	"bytes"
 	"network-stack/lib/types"
-	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/common"
+	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util"
 
@@ -15,7 +16,7 @@ type ClientHello struct {
 	Version            common.Version // Legacy. Always TLS 1.2
 	Random             [32]byte
 	SessionID          []byte // Legacy. Random 32byte value on compatibility modem else zero-length vector.
-	CipherSuites       []common.CipherSuite
+	CipherSuites       []ciphersuite.ID
 	CompressionMethods []byte // Legacy. It should be set to one zero-value byte. Meaning "null" compression method.
 	Extensions         extension.Extensions
 }
@@ -70,7 +71,7 @@ func (c *ClientHello) fillFrom(b []byte) (err error) {
 		return errors.Wrap(err, "reading sessionID")
 	}
 
-	c.CipherSuites, b, err = util.FromVector[common.CipherSuite](2, b, true)
+	c.CipherSuites, b, err = util.FromVector[ciphersuite.ID](2, b, true)
 	if err != nil {
 		return errors.Wrap(err, "reading cipherSuites")
 	}
@@ -93,7 +94,7 @@ type ServerHello struct {
 	Version           common.Version // Legacy. Always TLS 1.2
 	Random            [32]byte
 	SessionIDEcho     []byte // Legacy. Random 32byte value on compatibility modem else zero-length vector.
-	CipherSuite       common.CipherSuite
+	CipherSuite       ciphersuite.ID
 	CompressionMethod uint8 // Legacy. It should be set to one zero-value byte. Meaning "null" compression method.
 	Extensions        extension.Extensions
 }
@@ -159,7 +160,7 @@ func (s *ServerHello) fillFrom(b []byte) (err error) {
 	if len(b) < 2 {
 		return errors.New("insufficient data to read cipherSuite")
 	}
-	s.CipherSuite = common.CipherSuite([2]uint8(b[0:2]))
+	s.CipherSuite = ciphersuite.ID([2]uint8(b[0:2]))
 	b = b[2:]
 
 	if len(b) < 1 {

@@ -2,9 +2,9 @@ package extension
 
 import (
 	"encoding/binary"
-	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/common"
+	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/util"
-	"network-stack/session/tls/signature"
 
 	"github.com/pkg/errors"
 )

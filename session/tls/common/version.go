@@ -55,19 +55,3 @@ func (v Version) String() string {
 }
 
 var _ (util.VerctorConv) = Version(0)
-
-type CipherSuite [2]uint8
-
-func (CipherSuite) FromBytes(b []byte) (out util.VerctorConv, rest []byte, err error) {
-	if len(b) < 2 {
-		return nil, nil, util.ErrVectorShort
-	}
-
-	out = CipherSuite([2]uint8(b))
-
-	return out, b[2:], nil
-}
-
-func (c CipherSuite) Bytes() []byte {
-	return c[:]
-}

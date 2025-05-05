@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"network-stack/lib/types"
+	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util"
-	"network-stack/session/tls/signature"
 
 	"github.com/pkg/errors"
 )
