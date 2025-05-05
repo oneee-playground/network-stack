@@ -64,7 +64,7 @@ type Error struct {
 	cause       error
 }
 
-func NewError(desc Description, cause error) Error {
+func NewError(cause error, desc Description) Error {
 	return Error{
 		Description: desc,
 		cause:       cause,
