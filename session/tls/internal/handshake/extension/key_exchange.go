@@ -3,55 +3,14 @@ package extension
 import (
 	"bytes"
 	"encoding/binary"
+	"network-stack/session/tls/common/keyexchange"
 	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
 )
 
-// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.7
-type NamedGroup uint16
-
-func (n NamedGroup) Bytes() []byte {
-	b := make([]byte, 2)
-	b[0] = uint8(n >> 8)
-	b[1] = uint8(n)
-	return b
-}
-
-func (NamedGroup) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
-	if len(b) < 2 {
-		return nil, nil, util.ErrVectorShort
-	}
-
-	out = NamedGroup(binary.BigEndian.Uint16(b))
-
-	return out, b[2:], nil
-}
-
-var _ util.VectorConv = NamedGroup(0)
-
-const (
-	// Elliptic Curve Groups (ECDHE)
-	NamedGroup_Secp256r1 NamedGroup = 0x0017
-	NamedGroup_Secp384r1 NamedGroup = 0x0018
-	NamedGroup_Secp521r1 NamedGroup = 0x0019
-	NamedGroup_X25519    NamedGroup = 0x001D
-	NamedGroup_X448      NamedGroup = 0x001E
-
-	// Finite Field Groups (DHE)
-	NamedGroup_FFDHE2048 NamedGroup = 0x0100
-	NamedGroup_FFDHE3072 NamedGroup = 0x0101
-	NamedGroup_FFDHE4096 NamedGroup = 0x0102
-	NamedGroup_FFDHE6144 NamedGroup = 0x0103
-	NamedGroup_FFDHE8192 NamedGroup = 0x0104
-
-	// Reserved Code Points
-	// FFDHE private use 0x01FC ~ 0x01FF
-	// ECDHE private use 0xFE00 ~ 0xFEFF
-)
-
 type SupportedGroups struct {
-	NamedGroupList []NamedGroup
+	NamedGroupList []keyexchange.GroupID
 }
 
 var _ Extension = (*SupportedGroups)(nil)
@@ -69,7 +28,7 @@ func (s *SupportedGroups) Length() uint16 {
 }
 
 func (s *SupportedGroups) fillFrom(raw rawExtension) error {
-	namedGroups, _, err := util.FromVector[NamedGroup](2, raw.data, false)
+	namedGroups, _, err := util.FromVector[keyexchange.GroupID](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading named group list")
 	}
@@ -80,7 +39,7 @@ func (s *SupportedGroups) fillFrom(raw rawExtension) error {
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.8
 type KeyShareEntry struct {
-	Group       NamedGroup
+	Group       keyexchange.GroupID
 	KeyExchange []byte
 }
 
@@ -105,7 +64,7 @@ func (k KeyShareEntry) FromBytes(b []byte) (out util.VectorConv, rest []byte, er
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading key exchange")
 	}
-	return KeyShareEntry{group.(NamedGroup), keyExchange}, rest, nil
+	return KeyShareEntry{group.(keyexchange.GroupID), keyExchange}, rest, nil
 }
 
 type KeyShareCH struct{ KeyShares []KeyShareEntry }
@@ -139,7 +98,7 @@ func (k *KeyShareCH) fillFrom(raw rawExtension) error {
 	return nil
 }
 
-type KeyShareHRR struct{ SelectedGroup NamedGroup }
+type KeyShareHRR struct{ SelectedGroup keyexchange.GroupID }
 
 var _ Extension = (*KeyShareHRR)(nil)
 
@@ -165,7 +124,7 @@ func (k *KeyShareHRR) fillFrom(raw rawExtension) error {
 		return errors.New("invalid lnegth")
 	}
 
-	k.SelectedGroup = group.(NamedGroup)
+	k.SelectedGroup = group.(keyexchange.GroupID)
 	return nil
 }
 

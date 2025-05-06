@@ -1,14 +1,15 @@
 package extension
 
 import (
+	"network-stack/session/tls/common/keyexchange"
 	"testing"
 )
 
 func TestSupportedGroups(t *testing.T) {
 	orig := &SupportedGroups{
-		NamedGroupList: []NamedGroup{
-			NamedGroup_Secp256r1,
-			NamedGroup_X25519,
+		NamedGroupList: []keyexchange.GroupID{
+			keyexchange.Group_Secp256r1,
+			keyexchange.Group_X25519,
 		},
 	}
 
@@ -19,11 +20,11 @@ func TestKeyShareCH(t *testing.T) {
 	orig := &KeyShareCH{
 		KeyShares: []KeyShareEntry{
 			{
-				Group:       NamedGroup_Secp256r1,
+				Group:       keyexchange.Group_Secp256r1,
 				KeyExchange: []byte{0x01, 0x02, 0x03},
 			},
 			{
-				Group:       NamedGroup_X25519,
+				Group:       keyexchange.Group_X25519,
 				KeyExchange: []byte{0x04, 0x05, 0x06},
 			},
 		},
@@ -34,7 +35,7 @@ func TestKeyShareCH(t *testing.T) {
 
 func TestKeyShareHRR(t *testing.T) {
 	orig := &KeyShareHRR{
-		SelectedGroup: NamedGroup_X448,
+		SelectedGroup: keyexchange.Group_X448,
 	}
 
 	testExtension(t, orig, new(KeyShareHRR), TypeKeyShare)
@@ -43,7 +44,7 @@ func TestKeyShareHRR(t *testing.T) {
 func TestKeyShareSH(t *testing.T) {
 	orig := &KeyShareSH{
 		KeyShare: KeyShareEntry{
-			Group:       NamedGroup_FFDHE2048,
+			Group:       keyexchange.Group_FFDHE2048,
 			KeyExchange: []byte{0x07, 0x08, 0x09},
 		},
 	}
