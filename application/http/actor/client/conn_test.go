@@ -12,7 +12,7 @@ import (
 	"network-stack/application/util/uri"
 	"network-stack/lib/ds/queue"
 	iolib "network-stack/lib/io"
-	"network-stack/lib/pointer"
+	"network-stack/lib/types/pointer"
 	"network-stack/transport"
 	"network-stack/transport/pipe"
 	"sync"

@@ -5,7 +5,7 @@ import (
 	"network-stack/application/http"
 	"network-stack/application/http/transfer"
 	iolib "network-stack/lib/io"
-	"network-stack/lib/pointer"
+	"network-stack/lib/types/pointer"
 	"slices"
 	"strconv"
 

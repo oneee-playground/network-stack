@@ -1,7 +1,7 @@
 package uri
 
 import (
-	"network-stack/lib/pointer"
+	"network-stack/lib/types/pointer"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

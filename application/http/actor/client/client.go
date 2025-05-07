@@ -12,7 +12,7 @@ import (
 	"network-stack/application/util/uri"
 	"network-stack/lib/ds/queue"
 	iolib "network-stack/lib/io"
-	"network-stack/lib/pointer"
+	"network-stack/lib/types/pointer"
 	"network-stack/network/ip"
 	ipv4 "network-stack/network/ip/v4"
 	ipv6 "network-stack/network/ip/v6"

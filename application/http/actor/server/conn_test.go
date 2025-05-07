@@ -11,7 +11,7 @@ import (
 	"network-stack/application/http/transfer"
 	"network-stack/application/util/uri"
 	iolib "network-stack/lib/io"
-	"network-stack/lib/pointer"
+	"network-stack/lib/types/pointer"
 	"network-stack/transport"
 	"network-stack/transport/pipe"
 	"sync"
