@@ -180,3 +180,15 @@ func (e *Extensions) Remove(t ExtensionType) (found bool) {
 
 	return false
 }
+
+func (e *Extensions) Has(t ExtensionType) bool {
+	return e.Index(t) != -1
+}
+
+func (e *Extensions) Index(t ExtensionType) int {
+	return slices.IndexFunc(e.raws,
+		func(ext rawExtension) bool {
+			return ext.t == t
+		},
+	)
+}

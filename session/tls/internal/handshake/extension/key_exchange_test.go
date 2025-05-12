@@ -2,6 +2,7 @@ package extension
 
 import (
 	"network-stack/session/tls/common/keyexchange"
+	"network-stack/session/tls/common/session"
 	"testing"
 )
 
@@ -54,9 +55,9 @@ func TestKeyShareSH(t *testing.T) {
 
 func TestPskKeyExchangeModes(t *testing.T) {
 	orig := &PskKeyExchangeModes{
-		KeModes: []PskKeyExchangeMode{
-			ExchangeMode_PSKKE,
-			ExchangeMode_PSKDHEKE,
+		KeModes: []session.PSKMode{
+			session.PSKModePSK_KE,
+			session.PSKModePSK_DHE_KE,
 		},
 	}
 

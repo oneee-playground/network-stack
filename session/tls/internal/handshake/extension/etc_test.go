@@ -57,11 +57,9 @@ func TestEarlyDataEmpty(t *testing.T) {
 
 func TestSignatureAlgos(t *testing.T) {
 	orig := &SignatureAlgos{
-		signatureSchemeList: signatureSchemeList{
-			SupportedAlogs: []signature.Scheme{
-				signature.Scheme_RSA_PKCS1_SHA256,
-				signature.Scheme_ECDSA_Secp256r1_SHA256,
-			},
+		SupportedAlgos: []signature.Scheme{
+			signature.Scheme_RSA_PKCS1_SHA256,
+			signature.Scheme_ECDSA_Secp256r1_SHA256,
 		},
 	}
 
@@ -70,8 +68,8 @@ func TestSignatureAlgos(t *testing.T) {
 
 func TestSignatureAlgosCert(t *testing.T) {
 	orig := &SignatureAlgosCert{
-		signatureSchemeList: signatureSchemeList{
-			SupportedAlogs: []signature.Scheme{
+		SignatureAlgos: SignatureAlgos{
+			SupportedAlgos: []signature.Scheme{
 				signature.Scheme_RSA_PSS_RSAE_SHA256,
 				signature.Scheme_Ed25519,
 			},

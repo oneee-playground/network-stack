@@ -8,13 +8,26 @@ import (
 
 var ErrKeyLen = errors.New("invalid key length")
 
-type AEADFunc func(key []byte) (cipher.AEAD, error)
+type AEAD struct {
+	keyLen int
+	f      aeadFunc
+}
 
-func aeadAES_128_GCM(key []byte) (cipher.AEAD, error) {
-	if len(key) != 16 {
+func (a AEAD) New(key []byte) (cipher.AEAD, error) {
+	if len(key) != a.keyLen {
 		return nil, ErrKeyLen
 	}
 
+	return a.f(key)
+}
+
+func (a AEAD) KeyLen() int {
+	return a.keyLen
+}
+
+type aeadFunc func(key []byte) (cipher.AEAD, error)
+
+func aeadAES_128_GCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -23,10 +36,6 @@ func aeadAES_128_GCM(key []byte) (cipher.AEAD, error) {
 }
 
 func aeadAES_256_GCM(key []byte) (cipher.AEAD, error) {
-	if len(key) != 32 {
-		return nil, ErrKeyLen
-	}
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err

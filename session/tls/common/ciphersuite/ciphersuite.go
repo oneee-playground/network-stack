@@ -2,7 +2,6 @@ package ciphersuite
 
 import (
 	"crypto"
-	"crypto/cipher"
 	"network-stack/session/tls/internal/util"
 )
 
@@ -24,15 +23,15 @@ func (id ID) Bytes() []byte {
 
 type Suite struct {
 	id   ID
-	aead AEADFunc
+	aead AEAD
 	hash crypto.Hash
 }
 
-func (s Suite) ID() ID                               { return s.id }
-func (s Suite) AEAD(key []byte) (cipher.AEAD, error) { return s.aead(key) }
-func (s Suite) Hash() crypto.Hash                    { return s.hash }
+func (s Suite) ID() ID            { return s.id }
+func (s Suite) AEAD() AEAD        { return s.aead }
+func (s Suite) Hash() crypto.Hash { return s.hash }
 
-func NewSuite(id ID, aead AEADFunc, hash crypto.Hash) Suite {
+func NewSuite(id ID, aead AEAD, hash crypto.Hash) Suite {
 	return Suite{
 		id:   id,
 		aead: aead,
@@ -51,8 +50,8 @@ func Get(id ID) (Suite, bool) {
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
 var (
-	TLS_AES_128_GCM_SHA256 = register(Suite{ID([2]uint8{0x13, 0x01}), aeadAES_128_GCM, crypto.SHA256})
-	TLS_AES_256_GCM_SHA384 = register(Suite{ID([2]uint8{0x13, 0x02}), aeadAES_256_GCM, crypto.SHA384})
+	TLS_AES_128_GCM_SHA256 = register(Suite{ID([2]uint8{0x13, 0x01}), AEAD{16, aeadAES_128_GCM}, crypto.SHA256})
+	TLS_AES_256_GCM_SHA384 = register(Suite{ID([2]uint8{0x13, 0x02}), AEAD{32, aeadAES_256_GCM}, crypto.SHA384})
 
 	TLS_CHACHA20_POLY1305_SHA256 = [2]uint8{0x13, 0x03} // NOTE: Unimplemented in stdlib.
 

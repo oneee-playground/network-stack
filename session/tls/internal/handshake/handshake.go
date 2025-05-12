@@ -2,6 +2,7 @@ package handshake
 
 import (
 	"bufio"
+	"crypto"
 	"encoding/binary"
 	"io"
 	"network-stack/lib/types"
@@ -104,4 +105,35 @@ func (d *Decoder) Decode(v Handshake) error {
 
 	d.metadata = nil
 	return nil
+}
+
+func ToBytes(h Handshake) []byte {
+	t := byte(h.messageType())
+	l := h.length().Raw(false)
+
+	metadata := append([]byte{t}, l[:]...)
+
+	return append(metadata, h.data()...)
+}
+
+// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.1
+type messageHash struct {
+	clientHelloHash []byte
+}
+
+func (m *messageHash) messageType() handshakeType { return typeMessageHash }
+func (m *messageHash) data() []byte               { return m.clientHelloHash }
+func (m *messageHash) fillFrom(b []byte) error    { panic("we don't use it") }
+func (m *messageHash) length() types.Uint24 {
+	return types.NewUint24(uint32(len(m.clientHelloHash)))
+}
+
+var _ Handshake = (*messageHash)(nil)
+
+func MakeMessageHash(hash crypto.Hash, hello *ClientHello) *messageHash {
+	h := hash.New()
+	h.Write(ToBytes(hello))
+	helloHash := h.Sum(nil)
+
+	return &messageHash{clientHelloHash: helloHash}
 }

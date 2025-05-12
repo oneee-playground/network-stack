@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"bytes"
 	"encoding/binary"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/signature"
@@ -153,39 +154,104 @@ func (e *earlyDataEmpty) fillFrom(raw rawExtension) error {
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.3
-type signatureSchemeList struct {
-	SupportedAlogs []signature.Scheme
+type SignatureAlgos struct {
+	SupportedAlgos []signature.Scheme
 }
 
-func (s *signatureSchemeList) ExtensionType() ExtensionType {
-	panic("cannot be accessed")
+var _ Extension = (*SignatureAlgos)(nil)
+
+func (s *SignatureAlgos) ExtensionType() ExtensionType { return TypeSignatureAlgos }
+
+func (s *SignatureAlgos) Data() []byte {
+	return util.ToVector(2, s.SupportedAlgos)
 }
 
-func (s *signatureSchemeList) Data() []byte {
-	return util.ToVector(2, s.SupportedAlogs)
+func (s *SignatureAlgos) Length() uint16 {
+	return 2 + uint16(len(s.SupportedAlgos)*2)
 }
 
-func (s *signatureSchemeList) Length() uint16 {
-	return 2 + uint16(len(s.SupportedAlogs)*2)
-}
-
-func (s *signatureSchemeList) fillFrom(raw rawExtension) error {
+func (s *SignatureAlgos) fillFrom(raw rawExtension) error {
 	schemes, _, err := util.FromVector[signature.Scheme](2, raw.data, false)
 	if err != nil {
 		return errors.Wrap(err, "reading supported algorithms")
 	}
 
-	s.SupportedAlogs = schemes
+	s.SupportedAlgos = schemes
 	return nil
 }
 
-var _ Extension = (*signatureSchemeList)(nil)
+type SignatureAlgosCert struct{ SignatureAlgos }
 
-type SignatureAlgos struct{ signatureSchemeList }
-type SignatureAlgosCert struct{ signatureSchemeList }
-
-var _ Extension = (*SignatureAlgos)(nil)
 var _ Extension = (*SignatureAlgosCert)(nil)
 
-func (s *SignatureAlgos) ExtensionType() ExtensionType     { return TypeSignatureAlgos }
 func (s *SignatureAlgosCert) ExtensionType() ExtensionType { return TypeSignatureAlgosCert }
+
+// Reference: https://datatracker.ietf.org/doc/html/rfc6066#section-3
+type ServerNameType uint8
+
+const (
+	ServerNameTypeHostName ServerNameType = 0
+)
+
+type ServerName struct {
+	NameType ServerNameType
+	Name     []byte
+}
+
+var _ util.VectorConv = ServerName{}
+
+func (s ServerName) Bytes() []byte {
+	buf := bytes.NewBuffer(nil)
+	buf.WriteByte(byte(s.NameType))
+	buf.Write(util.ToVectorOpaque(2, s.Name))
+	return buf.Bytes()
+}
+
+func (s ServerName) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
+	if len(b) < 1 {
+		return nil, nil, errors.New("invalid lnegth")
+	}
+
+	s.NameType = ServerNameType(b[0])
+
+	name, _, err := util.FromVectorOpaque(2, b[1:], false)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "reading name")
+	}
+	s.Name = name
+
+	return s, nil, nil
+}
+
+type ServerNameList struct {
+	ServerNameList []ServerName
+}
+
+var _ Extension = (*ServerNameList)(nil)
+
+func (s *ServerNameList) ExtensionType() ExtensionType {
+	return TypeServerName
+}
+
+func (s *ServerNameList) Length() uint16 {
+	l := uint16(2)
+	for _, name := range s.ServerNameList {
+		l += uint16(1)
+		l += uint16(len(name.Name))
+	}
+	return l
+}
+
+func (s *ServerNameList) Data() []byte {
+	return util.ToVector(2, s.ServerNameList)
+}
+
+func (s *ServerNameList) fillFrom(raw rawExtension) error {
+	names, _, err := util.FromVector[ServerName](2, raw.data, false)
+	if err != nil {
+		return errors.Wrap(err, "reading names")
+	}
+
+	s.ServerNameList = names
+	return nil
+}
