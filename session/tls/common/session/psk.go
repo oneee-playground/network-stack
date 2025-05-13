@@ -1,6 +1,7 @@
 package session
 
 import (
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/internal/util"
 )
@@ -16,7 +17,7 @@ func (p PSKMode) Bytes() []byte {
 
 func (p PSKMode) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 1 {
-		return nil, nil, util.ErrVectorShort
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	out = PSKMode(b[0])

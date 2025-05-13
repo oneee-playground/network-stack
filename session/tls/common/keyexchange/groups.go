@@ -3,6 +3,7 @@ package keyexchange
 import (
 	"crypto/ecdh"
 	"encoding/binary"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
 
@@ -18,7 +19,7 @@ func (id GroupID) Bytes() []byte {
 
 func (GroupID) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, util.ErrVectorShort
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	out = GroupID(binary.BigEndian.Uint16(b))

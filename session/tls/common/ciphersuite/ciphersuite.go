@@ -2,6 +2,7 @@ package ciphersuite
 
 import (
 	"crypto"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
 
@@ -9,7 +10,7 @@ type ID [2]uint8
 
 func (ID) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, util.ErrVectorShort
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	out = ID([2]uint8(b))

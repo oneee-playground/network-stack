@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/elliptic"
 	"encoding/binary"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
 
@@ -19,7 +20,7 @@ func (s Scheme) Bytes() []byte {
 
 func (s Scheme) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, util.ErrVectorShort
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	s = Scheme(binary.BigEndian.Uint16(b))

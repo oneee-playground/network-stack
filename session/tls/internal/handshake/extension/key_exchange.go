@@ -3,6 +3,7 @@ package extension
 import (
 	"bytes"
 	"encoding/binary"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/keyexchange"
 	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/internal/util"
@@ -234,7 +235,7 @@ func (p PSKIdentity) FromBytes(b []byte) (out util.VectorConv, rest []byte, err 
 	}
 
 	if len(rest) < 4 {
-		return nil, nil, errors.Wrap(util.ErrVectorShort, "reading ticket age")
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	p.Identity = opaqueIDentity

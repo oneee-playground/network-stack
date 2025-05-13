@@ -209,7 +209,7 @@ func (s ServerName) Bytes() []byte {
 
 func (s ServerName) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 1 {
-		return nil, nil, errors.New("invalid lnegth")
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	s.NameType = ServerNameType(b[0])

@@ -56,7 +56,7 @@ func (c *ClientHello) length() types.Uint24 {
 
 func (c *ClientHello) fillFrom(b []byte) (err error) {
 	if len(b) < 34 {
-		return errors.New("insufficient data to read clientHello")
+		return common.ErrNeedMoreBytes
 	}
 
 	var v util.VectorConv
@@ -139,7 +139,7 @@ func (s *ServerHello) length() types.Uint24 {
 
 func (s *ServerHello) fillFrom(b []byte) (err error) {
 	if len(b) < 38 {
-		return errors.New("insufficient data to read serverHello")
+		return common.ErrNeedMoreBytes
 	}
 
 	var v util.VectorConv
@@ -158,13 +158,13 @@ func (s *ServerHello) fillFrom(b []byte) (err error) {
 	}
 
 	if len(b) < 2 {
-		return errors.New("insufficient data to read cipherSuite")
+		return common.ErrNeedMoreBytes
 	}
 	s.CipherSuite = ciphersuite.ID([2]uint8(b[0:2]))
 	b = b[2:]
 
 	if len(b) < 1 {
-		return errors.New("insufficient data to read compressionMethod")
+		return common.ErrNeedMoreBytes
 	}
 	s.CompressionMethod = b[0]
 	b = b[1:]

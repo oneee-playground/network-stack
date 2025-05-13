@@ -1,11 +1,10 @@
 package handshake
 
 import (
-	"bufio"
 	"crypto"
 	"encoding/binary"
-	"io"
 	"network-stack/lib/types"
+	"network-stack/session/tls/common"
 
 	"github.com/pkg/errors"
 )
@@ -35,75 +34,31 @@ type Handshake interface {
 	fillFrom(b []byte) error
 }
 
-type Encoder struct {
-	bw *bufio.Writer
-}
-
-func NewEncoder(w io.Writer) *Encoder {
-	return &Encoder{
-		bw: bufio.NewWriter(w),
-	}
-}
-
-func (e *Encoder) Encode(v Handshake) error {
-	t := byte(v.messageType())
-	l := v.length().Raw(false)
-
-	metadata := append([]byte{t}, l[:]...)
-	if _, err := e.bw.Write(metadata); err != nil {
-		return errors.Wrap(err, "writing metadata")
-	}
-
-	if _, err := e.bw.Write(v.data()); err != nil {
-		return errors.Wrap(err, "writing data")
-	}
-
-	if err := e.bw.Flush(); err != nil {
-		return errors.Wrap(err, "flushing bytes from buf")
-	}
-	return nil
-}
-
-type Decoder struct {
-	r        io.Reader
-	metadata []byte
-}
-
-func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{
-		r:        r,
-		metadata: nil,
-	}
-}
-
 var ErrNotExpectedHandshakeType = errors.New("handshake type differs from expected")
 
-func (d *Decoder) Decode(v Handshake) error {
-	if d.metadata == nil {
-		d.metadata = make([]byte, 4)
-		if _, err := io.ReadFull(d.r, d.metadata); err != nil {
-			return errors.Wrap(err, "error while reading metadata")
-		}
+func FromBytes(raw []byte, h Handshake) error {
+	if len(raw) < 4 {
+		return common.ErrNeedMoreBytes
 	}
 
-	t := handshakeType(d.metadata[0])
-	l := binary.BigEndian.Uint32(append([]byte{0}, d.metadata[1:4]...))
-	_ = l
+	t := handshakeType(raw[0])
+	l := binary.BigEndian.Uint32(append([]byte{0}, raw[1:4]...))
 
-	if t != v.messageType() {
+	if t != h.messageType() {
 		return ErrNotExpectedHandshakeType
 	}
 
-	buf := make([]byte, l)
-	if _, err := io.ReadFull(d.r, buf); err != nil {
-		return errors.Wrap(err, "reading handshake data")
+	if len(raw[4:]) < int(l) {
+		return common.ErrNeedMoreBytes
+	}
+	if len(raw[4:]) > int(l) {
+		return errors.New("data longer than advertised")
 	}
 
-	if err := v.fillFrom(buf); err != nil {
+	if err := h.fillFrom(raw[4:]); err != nil {
 		return errors.Wrap(err, "reading handshake message data")
 	}
 
-	d.metadata = nil
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"network-stack/lib/types"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util"
@@ -125,7 +126,7 @@ func (c *CertificateVerify) length() types.Uint24 {
 
 func (c *CertificateVerify) fillFrom(b []byte) (err error) {
 	if len(b) < 2 {
-		return errors.New("insufficient data to read algorithm")
+		return common.ErrNeedMoreBytes
 	}
 
 	c.Algorithm = signature.Scheme(binary.BigEndian.Uint16(b[:2]))
@@ -160,7 +161,7 @@ func (f *Finished) length() types.Uint24 {
 
 func (f *Finished) fillFrom(b []byte) error {
 	if len(b) == 0 {
-		return errors.New("insufficient data to read verifyData")
+		return common.ErrNeedMoreBytes
 	}
 
 	f.VerifyData = make([]byte, len(b))
@@ -217,7 +218,7 @@ func (n *NewSessionTicket) length() types.Uint24 {
 
 func (n *NewSessionTicket) fillFrom(b []byte) (err error) {
 	if len(b) < 8 {
-		return errors.New("insufficient data to read ticketLifetime and ticketAgeAdd")
+		return common.ErrNeedMoreBytes
 	}
 
 	n.TicketLifetime = binary.BigEndian.Uint32(b[:4])
@@ -271,8 +272,11 @@ func (k *KeyUpdate) length() types.Uint24 {
 }
 
 func (k *KeyUpdate) fillFrom(b []byte) error {
-	if len(b) != 1 {
-		return errors.New("invalid length for keyUpdate message")
+	if len(b) < 1 {
+		return common.ErrNeedMoreBytes
+	}
+	if len(b) > 1 {
+		return errors.New("bytes more than requested")
 	}
 
 	k.RequestUpdate = KeyUpdateRequest(b[0])

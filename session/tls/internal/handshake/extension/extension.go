@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 	"slices"
 
@@ -75,7 +76,7 @@ func (r rawExtension) Bytes() []byte {
 
 func (r rawExtension) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
-		return nil, nil, errors.Wrap(util.ErrVectorShort, "reading extension type")
+		return nil, nil, common.ErrNeedMoreBytes
 	}
 
 	r.t = ExtensionType(binary.BigEndian.Uint16(b[0:2]))
