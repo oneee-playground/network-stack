@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	sliceutil "network-stack/lib/slice"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
-	"slices"
 
 	"github.com/pkg/errors"
 )
@@ -51,20 +51,23 @@ type Extension interface {
 	Length() uint16 // Length of data.
 	Data() []byte
 
-	fillFrom(raw rawExtension) error
+	exists() bool // checks if underlying value is nil.
+	newFrom(raw Raw) (Extension, error)
 }
 
-type Extensions struct{ raws []rawExtension }
+type Raw raw
 
-type rawExtension struct {
+func (r Raw) Type() ExtensionType { return r.t }
+
+type raw struct {
 	t      ExtensionType
 	length uint16
 	data   []byte
 }
 
-var _ util.VectorConv = rawExtension{}
+var _ util.VectorConv = raw{}
 
-func (r rawExtension) Bytes() []byte {
+func (r raw) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(r.t.Bytes())
@@ -74,7 +77,7 @@ func (r rawExtension) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (r rawExtension) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
+func (r raw) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
 	if len(b) < 2 {
 		return nil, nil, common.ErrNeedMoreBytes
 	}
@@ -91,105 +94,81 @@ func (r rawExtension) FromBytes(b []byte) (out util.VectorConv, rest []byte, err
 	return r, rest, nil
 }
 
-func ExtensionsFrom(exts ...Extension) Extensions {
-	raws := make([]rawExtension, len(exts))
-	for i, ext := range exts {
-		raws[i] = rawExtension{
+// ToRaw ignores nil extensions.
+func ToRaw(exts ...Extension) []Raw {
+	raws := make([]Raw, 0)
+	for _, ext := range exts {
+		if !ext.exists() {
+			continue
+		}
+		raws = append(raws, Raw{
 			t:      ext.ExtensionType(),
 			length: ext.Length(),
 			data:   ext.Data(),
-		}
+		})
 	}
-	return Extensions{raws: raws}
+	return raws
 }
 
-func ExtensionsFromRaw(b []byte) (Extensions, error) {
-	extensions, _, err := util.FromVector[rawExtension](2, b, false)
+func Parse(b []byte, alloweRemain bool) ([]Raw, error) {
+	raws, _, err := util.FromVector[raw](2, b, alloweRemain)
 	if err != nil {
-		return Extensions{}, errors.Wrap(err, "parsing extensions")
+		return nil, errors.Wrap(err, "parsing extensions")
 	}
 
-	return Extensions{raws: extensions}, nil
+	return sliceutil.Map(raws, func(r raw) Raw { return Raw(r) }), nil
 }
 
-// Length doesn't include the length of the length field (2 bytes) .
-func (e Extensions) Length() (l uint16) {
-	for _, ext := range e.raws {
+func ByteLen(exts ...Extension) uint16 {
+	l := uint16(0)
+	for _, ext := range exts {
+		if !ext.exists() {
+			continue
+		}
 		l += 4 // extension type + length bytes.
-		l += ext.length
+		l += ext.Length()
 	}
-	return
+	return l
 }
 
-func (e Extensions) WriteTo(w io.Writer) (n int64, err error) {
+func WriteRaws(raws []Raw, w io.Writer) error {
 	buf := bytes.NewBuffer(nil)
 
 	// Write total length.
-	buf.Write(util.ToBigEndianBytes(uint(e.Length()), 2))
+	buf.Write(util.ToBigEndianBytes(uint(ByteLenRaw(raws)), 2))
 
-	for _, raw := range e.raws {
+	for _, raw := range raws {
 		buf.Write(raw.t.Bytes())
 		buf.Write(util.ToBigEndianBytes(uint(raw.length), 2))
 		buf.Write(raw.data)
 	}
 
-	return buf.WriteTo(w)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
-var ErrNoMatchingExtension = errors.New("no matching extension")
+func ByteLenRaw(raws []Raw) uint16 {
+	l := uint16(0)
+	for _, ext := range raws {
+		l += 4 // extension type + length bytes.
+		l += ext.length
+	}
+	return l
+}
 
-func (e Extensions) Extract(v Extension) error {
-	for _, raw := range e.raws {
-		if raw.t == v.ExtensionType() {
-			return v.fillFrom(raw)
+// tmpl.ExtensionType() must return a value.
+// If extension is not found, Extract will return (tmpl, nil).
+func Extract[T Extension](raws []Raw, tmpl T) (T, error) {
+	for _, raw := range raws {
+		if raw.t == tmpl.ExtensionType() {
+			ext, err := tmpl.newFrom(raw)
+			if err != nil {
+				return tmpl, err
+			}
+
+			return ext.(T), nil
 		}
 	}
 
-	return ErrNoMatchingExtension
-}
-
-func (e Extensions) Clone() Extensions {
-	return Extensions{raws: slices.Clone(e.raws)}
-}
-
-func (e *Extensions) Set(v Extension) {
-	input := rawExtension{
-		t:      v.ExtensionType(),
-		length: v.Length(),
-		data:   v.Data(),
-	}
-
-	for idx, raw := range e.raws {
-		if raw.t == input.t {
-			e.raws[idx] = input
-			return
-		}
-	}
-
-	// Not Found.
-	e.raws = append(e.raws, input)
-}
-
-func (e *Extensions) Remove(t ExtensionType) (found bool) {
-	for idx := 0; idx < len(e.raws); idx++ {
-		raw := e.raws[idx]
-		if raw.t == t {
-			e.raws = append(e.raws[:idx], e.raws[idx+1:]...)
-			return true
-		}
-	}
-
-	return false
-}
-
-func (e *Extensions) Has(t ExtensionType) bool {
-	return e.Index(t) != -1
-}
-
-func (e *Extensions) Index(t ExtensionType) int {
-	return slices.IndexFunc(e.raws,
-		func(ext rawExtension) bool {
-			return ext.t == t
-		},
-	)
+	return tmpl, nil
 }

@@ -5,7 +5,6 @@ import (
 
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
-	"network-stack/session/tls/internal/handshake/extension"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -17,7 +16,6 @@ func TestClientHello(t *testing.T) {
 		SessionID:          []byte{0x05, 0x06},
 		CipherSuites:       []ciphersuite.ID{},
 		CompressionMethods: []byte{0x00},
-		Extensions:         extension.ExtensionsFrom(),
 	}
 
 	testHandshake(t, input, &ClientHello{}, typeClientHello)
@@ -30,7 +28,6 @@ func TestServerHello(t *testing.T) {
 		SessionIDEcho:     []byte{0x0B, 0x0C},
 		CipherSuite:       ciphersuite.ID{},
 		CompressionMethod: 0x00,
-		Extensions:        extension.ExtensionsFrom(),
 	}
 
 	testHandshake(t, input, &ServerHello{}, typeServerHello)
@@ -42,7 +39,6 @@ func TestServerHelloRetry(t *testing.T) {
 		SessionIDEcho:     []byte{},
 		CipherSuite:       ciphersuite.ID{},
 		CompressionMethod: 0x00,
-		Extensions:        extension.ExtensionsFrom(),
 	}
 
 	input.ToHelloRetry()

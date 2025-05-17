@@ -14,7 +14,7 @@ func TestSupportedGroups(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(SupportedGroups), TypeSupportedGroups)
+	testExtension(t, orig, TypeSupportedGroups)
 }
 
 func TestKeyShareCH(t *testing.T) {
@@ -31,7 +31,7 @@ func TestKeyShareCH(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(KeyShareCH), TypeKeyShare)
+	testExtension(t, orig, TypeKeyShare)
 }
 
 func TestKeyShareHRR(t *testing.T) {
@@ -39,7 +39,7 @@ func TestKeyShareHRR(t *testing.T) {
 		SelectedGroup: keyexchange.Group_X448,
 	}
 
-	testExtension(t, orig, new(KeyShareHRR), TypeKeyShare)
+	testExtension(t, orig, TypeKeyShare)
 }
 
 func TestKeyShareSH(t *testing.T) {
@@ -50,7 +50,7 @@ func TestKeyShareSH(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(KeyShareSH), TypeKeyShare)
+	testExtension(t, orig, TypeKeyShare)
 }
 
 func TestPskKeyExchangeModes(t *testing.T) {
@@ -61,7 +61,7 @@ func TestPskKeyExchangeModes(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(PskKeyExchangeModes), TypePskKeyExchangeModes)
+	testExtension(t, orig, TypePskKeyExchangeModes)
 }
 
 func TestPreSharedKeySH(t *testing.T) {
@@ -69,7 +69,7 @@ func TestPreSharedKeySH(t *testing.T) {
 		SelectedIdentity: 0x1234,
 	}
 
-	testExtension(t, orig, new(PreSharedKeySH), TypePreSharedKey)
+	testExtension(t, orig, TypePreSharedKey)
 }
 
 func TestPreSharedKeyCH(t *testing.T) {
@@ -90,5 +90,5 @@ func TestPreSharedKeyCH(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(PreSharedKeyCH), TypePreSharedKey)
+	testExtension(t, orig, TypePreSharedKey)
 }

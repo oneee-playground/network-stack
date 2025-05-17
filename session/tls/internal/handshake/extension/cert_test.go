@@ -12,7 +12,7 @@ func TestCertAuthorities(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(CertAuthorities), TypeCertAuthorities)
+	testExtension(t, orig, TypeCertAuthorities)
 }
 
 func TestOIDFilters(t *testing.T) {
@@ -29,5 +29,5 @@ func TestOIDFilters(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(OIDFilters), TypeOidFilters)
+	testExtension(t, orig, TypeOidFilters)
 }

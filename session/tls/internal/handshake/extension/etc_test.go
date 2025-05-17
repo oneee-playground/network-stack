@@ -14,7 +14,7 @@ func TestSupportedVersionsCH(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(SupportedVersionsCH), TypeSupportedVersions)
+	testExtension(t, orig, TypeSupportedVersions)
 }
 
 func TestSupportedVersionsSH(t *testing.T) {
@@ -22,7 +22,7 @@ func TestSupportedVersionsSH(t *testing.T) {
 		SelectedVersion: common.VersionTLS13,
 	}
 
-	testExtension(t, orig, new(SupportedVersionsSH), TypeSupportedVersions)
+	testExtension(t, orig, TypeSupportedVersions)
 }
 
 func TestCookie(t *testing.T) {
@@ -30,13 +30,13 @@ func TestCookie(t *testing.T) {
 		Cookie: []byte("sample-cookie"),
 	}
 
-	testExtension(t, orig, new(Cookie), TypeCookie)
+	testExtension(t, orig, TypeCookie)
 }
 
 func TestPostHandshakeAuth(t *testing.T) {
 	orig := &PostHandshakeAuth{}
 
-	testExtension(t, orig, new(PostHandshakeAuth), TypePostHandshakeAuth)
+	testExtension(t, orig, TypePostHandshakeAuth)
 }
 
 func TestEarlyDataNST(t *testing.T) {
@@ -44,15 +44,15 @@ func TestEarlyDataNST(t *testing.T) {
 		MaxEarlyDataSize: 0xDEADBEEF,
 	}
 
-	testExtension(t, orig, new(EarlyDataNST), TypeEarlyData)
+	testExtension(t, orig, TypeEarlyData)
 }
 
 func TestEarlyDataEmpty(t *testing.T) {
 	ch := &EarlyDataCH{}
 	ee := &EarlyDataEE{}
 
-	testExtension(t, ch, new(EarlyDataCH), TypeEarlyData)
-	testExtension(t, ee, new(EarlyDataEE), TypeEarlyData)
+	testExtension(t, ch, TypeEarlyData)
+	testExtension(t, ee, TypeEarlyData)
 }
 
 func TestSignatureAlgos(t *testing.T) {
@@ -63,18 +63,16 @@ func TestSignatureAlgos(t *testing.T) {
 		},
 	}
 
-	testExtension(t, orig, new(SignatureAlgos), TypeSignatureAlgos)
+	testExtension(t, orig, TypeSignatureAlgos)
 }
 
 func TestSignatureAlgosCert(t *testing.T) {
 	orig := &SignatureAlgosCert{
-		SignatureAlgos: SignatureAlgos{
-			SupportedAlgos: []signature.Scheme{
-				signature.Scheme_RSA_PSS_RSAE_SHA256,
-				signature.Scheme_Ed25519,
-			},
+		SupportedAlgos: []signature.Scheme{
+			signature.Scheme_RSA_PSS_RSAE_SHA256,
+			signature.Scheme_Ed25519,
 		},
 	}
 
-	testExtension(t, orig, new(SignatureAlgosCert), TypeSignatureAlgosCert)
+	testExtension(t, orig, TypeSignatureAlgosCert)
 }

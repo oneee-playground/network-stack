@@ -23,7 +23,7 @@ const (
 type CertificateEntry struct {
 	// could be ASN1_subjectPublicKeyInfo. See: https://datatracker.ietf.org/doc/html/rfc7250
 	CertData   []byte
-	Extensions extension.Extensions
+	Extensions []extension.Extension
 }
 
 var _ (util.VectorConv) = CertificateEntry{}
@@ -32,7 +32,8 @@ func (c CertificateEntry) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
 	buf.Write(util.ToVectorOpaque(3, c.CertData))
-	c.Extensions.WriteTo(buf)
+	raws := extension.ToRaw(c.Extensions...)
+	extension.WriteRaws(raws, buf)
 
 	return buf.Bytes()
 }
@@ -43,12 +44,14 @@ func (c CertificateEntry) FromBytes(b []byte) (out util.VectorConv, rest []byte,
 		return nil, nil, errors.Wrap(err, "reading cert data")
 	}
 
-	c.Extensions, err = extension.ExtensionsFromRaw(rest)
+	raws, err := extension.Parse(rest, true)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "reading extensions")
 	}
 
-	rest = rest[2+c.Extensions.Length():]
+	_ = raws // Where to use?
+
+	rest = rest[2+extension.ByteLenRaw(raws):]
 	return c, rest, nil
 }
 
@@ -187,7 +190,8 @@ type NewSessionTicket struct {
 	TicketAgeAdd   uint32
 	TicketNonce    []byte
 	Ticket         []byte
-	Extensions     extension.Extensions
+
+	ExtEarlyData *extension.EarlyDataNST
 }
 
 var _ Handshake = (*NewSessionTicket)(nil)
@@ -203,7 +207,9 @@ func (n *NewSessionTicket) data() []byte {
 	buf.Write(util.ToBigEndianBytes(uint(n.TicketAgeAdd), 4))
 	buf.Write(util.ToVectorOpaque(1, n.TicketNonce))
 	buf.Write(util.ToVectorOpaque(2, n.Ticket))
-	n.Extensions.WriteTo(buf)
+
+	raws := extension.ToRaw(n.ExtEarlyData)
+	extension.WriteRaws(raws, buf)
 
 	return buf.Bytes()
 }
@@ -212,7 +218,7 @@ func (n *NewSessionTicket) length() types.Uint24 {
 	l := uint32(4 + 4) // ticket_lifetime, ticket_age_add
 	l += 1 + uint32(len(n.TicketNonce))
 	l += 2 + uint32(len(n.Ticket))
-	l += 2 + uint32(n.Extensions.Length())
+	l += 2 + uint32(extension.ByteLen(n.ExtEarlyData))
 	return types.NewUint24(l)
 }
 
@@ -237,9 +243,13 @@ func (n *NewSessionTicket) fillFrom(b []byte) (err error) {
 		return errors.Wrap(err, "reading ticket")
 	}
 
-	n.Extensions, err = extension.ExtensionsFromRaw(b)
+	raws, err := extension.Parse(b, false)
 	if err != nil {
 		return errors.Wrap(err, "reading extensions")
+	}
+
+	if n.ExtEarlyData, err = extension.Extract(raws, n.ExtEarlyData); err != nil {
+		return errors.Wrap(err, "early data")
 	}
 
 	return nil

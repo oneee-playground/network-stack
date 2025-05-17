@@ -28,9 +28,8 @@ var _ util.VectorConv = (DistinguishedName)(nil)
 
 var _ Extension = (*CertAuthorities)(nil)
 
-func (c *CertAuthorities) ExtensionType() ExtensionType {
-	return TypeCertAuthorities
-}
+func (c *CertAuthorities) ExtensionType() ExtensionType { return TypeCertAuthorities }
+func (c *CertAuthorities) exists() bool                 { return c != nil }
 
 func (c *CertAuthorities) Data() []byte {
 	return util.ToVector(2, c.Authorities)
@@ -46,14 +45,15 @@ func (c *CertAuthorities) Length() uint16 {
 	return dLen
 }
 
-func (c *CertAuthorities) fillFrom(raw rawExtension) error {
+func (*CertAuthorities) newFrom(raw Raw) (Extension, error) {
+	var c CertAuthorities
 	out, _, err := util.FromVector[DistinguishedName](2, raw.data, false)
 	if err != nil {
-		return errors.Wrap(err, "reading authorities")
+		return nil, errors.Wrap(err, "reading authorities")
 	}
 
 	c.Authorities = out
-	return nil
+	return &c, nil
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.5
@@ -106,9 +106,8 @@ var _ util.VectorConv = (*OIDFilter)(nil)
 
 var _ Extension = (*OIDFilters)(nil)
 
-func (o *OIDFilters) ExtensionType() ExtensionType {
-	return TypeOidFilters
-}
+func (o *OIDFilters) ExtensionType() ExtensionType { return TypeOidFilters }
+func (o *OIDFilters) exists() bool                 { return o != nil }
 
 func (o *OIDFilters) Data() []byte {
 	return util.ToVector(2, o.Filters)
@@ -123,12 +122,13 @@ func (o *OIDFilters) Length() uint16 {
 	return dLen
 }
 
-func (o *OIDFilters) fillFrom(raw rawExtension) error {
+func (*OIDFilters) newFrom(raw Raw) (Extension, error) {
+	var o OIDFilters
 	out, _, err := util.FromVector[OIDFilter](2, raw.data, false)
 	if err != nil {
-		return errors.Wrap(err, "reading filters")
+		return nil, errors.Wrap(err, "reading filters")
 	}
 
 	o.Filters = out
-	return nil
+	return &o, nil
 }

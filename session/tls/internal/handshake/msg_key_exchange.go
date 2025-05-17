@@ -18,7 +18,18 @@ type ClientHello struct {
 	SessionID          []byte // Legacy. Random 32byte value on compatibility modem else zero-length vector.
 	CipherSuites       []ciphersuite.ID
 	CompressionMethods []byte // Legacy. It should be set to one zero-value byte. Meaning "null" compression method.
-	Extensions         extension.Extensions
+
+	// Extensions for CH.
+	ExtSupportedVersions  *extension.SupportedVersionsCH
+	ExtSupportedGroups    *extension.SupportedGroups
+	ExtSignatureAlgos     *extension.SignatureAlgos
+	ExtSignatureAlgosCert *extension.SignatureAlgosCert
+	ExtEarlyData          *extension.EarlyDataCH
+	ExtCertAuthorities    *extension.CertAuthorities
+	ExtServerNameList     *extension.ServerNameList
+	ExtKeyShares          *extension.KeyShareCH
+	ExtPreSharedKey       *extension.PreSharedKeyCH
+	ExtCookie             *extension.Cookie
 }
 
 var _ Handshake = (*ClientHello)(nil)
@@ -36,7 +47,19 @@ func (c *ClientHello) data() []byte {
 	buf.Write(util.ToVector(2, c.CipherSuites))
 	buf.Write(util.ToVectorOpaque(1, c.CompressionMethods))
 
-	c.Extensions.WriteTo(buf)
+	raws := extension.ToRaw(
+		c.ExtSupportedVersions,
+		c.ExtSupportedGroups,
+		c.ExtSignatureAlgos,
+		c.ExtSignatureAlgosCert,
+		c.ExtEarlyData,
+		c.ExtCertAuthorities,
+		c.ExtServerNameList,
+		c.ExtKeyShares,
+		c.ExtPreSharedKey,
+		c.ExtCookie,
+	)
+	extension.WriteRaws(raws, buf)
 
 	return buf.Bytes()
 }
@@ -49,7 +72,18 @@ func (c *ClientHello) length() types.Uint24 {
 	dLen += 1 + uint32(len(c.SessionID))
 	dLen += 2 + uint32(2*len(c.CipherSuites)) // size of suite * num of suites.
 	dLen += 1 + uint32(len(c.CompressionMethods))
-	dLen += 2 + uint32(c.Extensions.Length())
+	dLen += 2 + uint32(extension.ByteLen(
+		c.ExtSupportedVersions,
+		c.ExtSupportedGroups,
+		c.ExtSignatureAlgos,
+		c.ExtSignatureAlgosCert,
+		c.ExtEarlyData,
+		c.ExtCertAuthorities,
+		c.ExtServerNameList,
+		c.ExtKeyShares,
+		c.ExtPreSharedKey,
+		c.ExtCookie,
+	))
 
 	return types.NewUint24(dLen)
 }
@@ -81,9 +115,40 @@ func (c *ClientHello) fillFrom(b []byte) (err error) {
 		return errors.Wrap(err, "reading compressionMethods")
 	}
 
-	c.Extensions, err = extension.ExtensionsFromRaw(b)
+	raws, err := extension.Parse(b, false)
 	if err != nil {
 		return errors.Wrap(err, "reading extensions")
+	}
+
+	if c.ExtSupportedVersions, err = extension.Extract(raws, c.ExtSupportedVersions); err != nil {
+		return errors.Wrap(err, "supported versions")
+	}
+	if c.ExtSupportedGroups, err = extension.Extract(raws, c.ExtSupportedGroups); err != nil {
+		return errors.Wrap(err, "supported groups")
+	}
+	if c.ExtSignatureAlgos, err = extension.Extract(raws, c.ExtSignatureAlgos); err != nil {
+		return errors.Wrap(err, "signature algos")
+	}
+	if c.ExtSignatureAlgosCert, err = extension.Extract(raws, c.ExtSignatureAlgosCert); err != nil {
+		return errors.Wrap(err, "signature algos cert")
+	}
+	if c.ExtEarlyData, err = extension.Extract(raws, c.ExtEarlyData); err != nil {
+		return errors.Wrap(err, "early data")
+	}
+	if c.ExtCertAuthorities, err = extension.Extract(raws, c.ExtCertAuthorities); err != nil {
+		return errors.Wrap(err, "cert authorities")
+	}
+	if c.ExtServerNameList, err = extension.Extract(raws, c.ExtServerNameList); err != nil {
+		return errors.Wrap(err, "sni")
+	}
+	if c.ExtKeyShares, err = extension.Extract(raws, c.ExtKeyShares); err != nil {
+		return errors.Wrap(err, "key shares")
+	}
+	if c.ExtPreSharedKey, err = extension.Extract(raws, c.ExtPreSharedKey); err != nil {
+		return errors.Wrap(err, "pre-shared key")
+	}
+	if c.ExtCookie, err = extension.Extract(raws, c.ExtCookie); err != nil {
+		return errors.Wrap(err, "cookie")
 	}
 
 	return nil
@@ -96,7 +161,17 @@ type ServerHello struct {
 	SessionIDEcho     []byte // Legacy. Random 32byte value on compatibility modem else zero-length vector.
 	CipherSuite       ciphersuite.ID
 	CompressionMethod uint8 // Legacy. It should be set to one zero-value byte. Meaning "null" compression method.
-	Extensions        extension.Extensions
+
+	// Extensions for common SH.
+	ExtSupportedVersions *extension.SupportedVersionsSH
+
+	// Extensions for SH.
+	ExtKeyShareSH   *extension.KeyShareSH
+	ExtPreSharedKey *extension.PreSharedKeySH
+
+	// Extensions for HRR.
+	ExtKeyShareHRR *extension.KeyShareHRR
+	ExtCookie      *extension.Cookie
 }
 
 var DowngradeTLS12 = [8]byte{0x44, 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 01}
@@ -119,7 +194,14 @@ func (s *ServerHello) data() []byte {
 
 	buf.WriteByte(s.CompressionMethod)
 
-	s.Extensions.WriteTo(buf)
+	raws := extension.ToRaw(
+		s.ExtSupportedVersions,
+		s.ExtKeyShareSH,
+		s.ExtPreSharedKey,
+		s.ExtKeyShareHRR,
+		s.ExtCookie,
+	)
+	extension.WriteRaws(raws, buf)
 
 	return buf.Bytes()
 }
@@ -132,7 +214,13 @@ func (s *ServerHello) length() types.Uint24 {
 	dLen += 1 + uint32(len(s.SessionIDEcho))
 	dLen += uint32(len(s.CipherSuite))
 	dLen += 1 // Compression method.
-	dLen += 2 + uint32(s.Extensions.Length())
+	dLen += 2 + uint32(extension.ByteLen(
+		s.ExtSupportedVersions,
+		s.ExtKeyShareSH,
+		s.ExtPreSharedKey,
+		s.ExtKeyShareHRR,
+		s.ExtCookie,
+	))
 
 	return types.NewUint24(dLen)
 }
@@ -169,9 +257,29 @@ func (s *ServerHello) fillFrom(b []byte) (err error) {
 	s.CompressionMethod = b[0]
 	b = b[1:]
 
-	s.Extensions, err = extension.ExtensionsFromRaw(b)
+	raws, err := extension.Parse(b, false)
 	if err != nil {
 		return errors.Wrap(err, "reading extensions")
+	}
+
+	if s.ExtSupportedVersions, err = extension.Extract(raws, s.ExtSupportedVersions); err != nil {
+		return errors.Wrap(err, "supported versions")
+	}
+
+	if !s.IsHelloRetry() {
+		if s.ExtKeyShareSH, err = extension.Extract(raws, s.ExtKeyShareSH); err != nil {
+			return errors.Wrap(err, "key share")
+		}
+		if s.ExtPreSharedKey, err = extension.Extract(raws, s.ExtPreSharedKey); err != nil {
+			return errors.Wrap(err, "pre-shared key")
+		}
+	} else {
+		if s.ExtKeyShareHRR, err = extension.Extract(raws, s.ExtKeyShareHRR); err != nil {
+			return errors.Wrap(err, "key share")
+		}
+		if s.ExtCookie, err = extension.Extract(raws, s.ExtCookie); err != nil {
+			return errors.Wrap(err, "cookie")
+		}
 	}
 
 	return nil

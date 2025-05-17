@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/elliptic"
 	"encoding/binary"
+	sliceutil "network-stack/lib/slice"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
@@ -39,6 +40,12 @@ func Get(id Scheme) (Algorithm, bool) {
 	return algo, ok
 }
 
+func AsSchemes(algos []Algorithm) []Scheme {
+	return sliceutil.Map(algos, func(algo Algorithm) Scheme {
+		return algo.ID()
+	})
+}
+
 var (
 	// RSASSA-PKCS1-v1.5 algorithms
 	Scheme_RSA_PKCS1_SHA256 = register(Algorithm{0x0401, signerRSA_PKCS1v15{}, crypto.SHA256})
@@ -60,8 +67,8 @@ var (
 	Scheme_Ed448   = 0x0808 // NOTE: Unimplemented in stdlib.
 
 	// RSASSA-PSS algorithms with public key OID RSASSA-PSS
-	// NOTE: This won't verify difference between PSS and RSAE.
-	// If it is required. Change it later.
+	// NOTE: The stdlib doesn't support PSS key.
+	// So using this won't make any difference of using PSS_RSAE schemes.
 	Scheme_RSA_PSS_PSS_SHA256 = register(Algorithm{0x0809, signerRSA_PSS{}, crypto.SHA256})
 	Scheme_RSA_PSS_PSS_SHA384 = register(Algorithm{0x080A, signerRSA_PSS{}, crypto.SHA384})
 	Scheme_RSA_PSS_PSS_SHA512 = register(Algorithm{0x080B, signerRSA_PSS{}, crypto.SHA512})

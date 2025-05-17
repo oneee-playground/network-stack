@@ -7,6 +7,7 @@ import (
 	"network-stack/session/tls/common"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockHandshake struct {
@@ -73,4 +74,15 @@ func TestHandshakeFromBytesWrongType(t *testing.T) {
 
 	err := FromBytes(raw, hs)
 	assert.ErrorIs(t, err, ErrNotExpectedHandshakeType)
+}
+
+func testHandshake(t *testing.T, input Handshake, decoded Handshake, wantType handshakeType) {
+	require.Equal(t, wantType, input.messageType())
+
+	// Encode
+	data := input.data()
+	assert.Equal(t, input.length().Uint32(), uint32(len(data)))
+
+	require.NoError(t, decoded.fillFrom(data))
+	assert.Equal(t, input, decoded)
 }

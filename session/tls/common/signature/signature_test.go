@@ -19,11 +19,10 @@ func TestAlgorithm_SignAndVerify(t *testing.T) {
 	algo := NewAlgorithm(Scheme_RSA_PKCS1_SHA256, signerRSA_PKCS1v15{}, crypto.SHA256)
 
 	// Test Sign
-	signature, err := algo.Sign(data, privKey)
+	signature, err := algo.Sign(rand.Reader, data, privKey)
 	require.NoError(t, err)
 
 	// Test Verify
-	ok, err := algo.Verify(data, signature, &privKey.PublicKey)
+	err = algo.Verify(data, signature, &privKey.PublicKey)
 	assert.NoError(t, err)
-	assert.True(t, ok)
 }

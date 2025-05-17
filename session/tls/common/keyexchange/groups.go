@@ -3,6 +3,7 @@ package keyexchange
 import (
 	"crypto/ecdh"
 	"encoding/binary"
+	sliceutil "network-stack/lib/slice"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
@@ -48,6 +49,12 @@ func register(g Group) GroupID { groups[g.ID()] = g; return g.ID() }
 func Get(id GroupID) (Group, bool) {
 	g, ok := groups[id]
 	return g, ok
+}
+
+func AsIDs(groups []Group) []GroupID {
+	return sliceutil.Map(groups, func(group Group) GroupID {
+		return group.ID()
+	})
 }
 
 var (

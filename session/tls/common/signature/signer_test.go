@@ -24,7 +24,7 @@ func TestSignerRSA_PKCS1v15(t *testing.T) {
 	signer := signerRSA_PKCS1v15{}
 
 	// Test Sign
-	signature, err := signer.Sign(hashed[:], crypto.SHA256, privKey)
+	signature, err := signer.Sign(rand.Reader, hashed[:], crypto.SHA256, privKey)
 	require.NoError(t, err)
 
 	// Test Verify
@@ -46,7 +46,7 @@ func TestSignerECDSA(t *testing.T) {
 	signer := signerECDSA{curve: elliptic.P256()}
 
 	// Test Sign
-	signature, err := signer.Sign(hashed[:], crypto.SHA256, privKey)
+	signature, err := signer.Sign(rand.Reader, hashed[:], crypto.SHA256, privKey)
 	require.NoError(t, err)
 
 	// Test Verify
@@ -68,7 +68,7 @@ func TestSignerRSA_PSS(t *testing.T) {
 	signer := signerRSA_PSS{}
 
 	// Test Sign
-	signature, err := signer.Sign(hashed[:], crypto.SHA256, privKey)
+	signature, err := signer.Sign(rand.Reader, hashed[:], crypto.SHA256, privKey)
 	require.NoError(t, err)
 
 	// Test Verify
@@ -89,7 +89,7 @@ func TestSignerEdDSA(t *testing.T) {
 	signer := signerEdDSA{}
 
 	// Test Sign
-	signature, err := signer.Sign(data, crypto.Hash(0), privKey)
+	signature, err := signer.Sign(rand.Reader, data, crypto.Hash(0), privKey)
 	require.NoError(t, err)
 
 	// Test Verify
@@ -105,7 +105,7 @@ func TestSignerUnsupportedKey(t *testing.T) {
 	signer := signerRSA_PKCS1v15{}
 
 	// Test Sign with unsupported key
-	_, err := signer.Sign([]byte("data"), crypto.SHA256, "unsupported key")
+	_, err := signer.Sign(rand.Reader, []byte("data"), crypto.SHA256, "unsupported key")
 	assert.ErrorIs(t, err, ErrUnsupportedKey)
 
 	// Test Verify with unsupported key

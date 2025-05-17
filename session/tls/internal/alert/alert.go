@@ -1,6 +1,7 @@
 package alert
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -77,4 +78,12 @@ func (e Error) Error() string {
 
 func (e Error) Cause() error {
 	return e.cause
+}
+
+func (e Error) IsOurs() bool {
+	return e.cause != nil
+}
+
+func (e Error) Is(err error) bool {
+	return errors.Is(e.cause, err)
 }

@@ -2,6 +2,7 @@ package ciphersuite
 
 import (
 	"crypto"
+	sliceutil "network-stack/lib/slice"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 )
@@ -47,6 +48,12 @@ func register(s Suite) ID { suites[s.ID()] = s; return s.ID() }
 func Get(id ID) (Suite, bool) {
 	s, ok := suites[id]
 	return s, ok
+}
+
+func AsIDs(suites []Suite) []ID {
+	return sliceutil.Map(suites, func(suite Suite) ID {
+		return suite.ID()
+	})
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
