@@ -22,7 +22,7 @@ func TestPipeTransportTestSuite(t *testing.T) {
 }
 
 func (s *PipeTransportTestSuite) SetupTest() {
-	s.transport = NewPipeTransport(clock.New())
+	s.transport = NewPipeTransport(clock.New(), 0)
 }
 
 func (s *PipeTransportTestSuite) TestListen() {
@@ -71,7 +71,7 @@ func TestPipeListenerTestSuite(t *testing.T) {
 }
 
 func (s *PipeListenerTestSuite) SetupTest() {
-	s.transport = NewPipeTransport(clock.New())
+	s.transport = NewPipeTransport(clock.New(), 0)
 
 	s.pl = &pipeListener{
 		addr:      Addr{Name: "hey"},
@@ -84,7 +84,7 @@ func (s *PipeListenerTestSuite) SetupTest() {
 }
 
 func (s *PipeListenerTestSuite) TestAccept() {
-	_, p2 := NewPair("dialer", s.pl.addr.(Addr).Name, s.transport.clock)
+	_, p2 := Pipe("dialer", s.pl.addr.(Addr).Name, s.transport.clock)
 
 	done := make(chan struct{})
 	go func() {
@@ -105,7 +105,7 @@ func (s *PipeListenerTestSuite) TestAccept() {
 }
 
 func (s *PipeListenerTestSuite) TestAcceptCancels() {
-	_, p2 := NewPair("dialer", s.pl.addr.(Addr).Name, s.transport.clock)
+	_, p2 := Pipe("dialer", s.pl.addr.(Addr).Name, s.transport.clock)
 
 	done := make(chan struct{})
 	go func() {

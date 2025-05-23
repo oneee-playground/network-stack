@@ -17,5 +17,5 @@ func TestPipeTestSuite(t *testing.T) {
 
 func (s *PipeTestSuite) SetupTest() {
 	s.ConnTestSuite.SetupTest()
-	s.C1, s.C2 = NewPair("A", "B", s.Clock)
+	s.C1, s.C2 = Pipe("A", "B", s.Clock)
 }

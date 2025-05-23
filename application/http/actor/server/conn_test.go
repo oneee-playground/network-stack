@@ -48,7 +48,7 @@ func (s *ServeTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
 
-	s.tConn, s.otherConn = pipe.NewPair("a", "b", s.clock)
+	s.tConn, s.otherConn = pipe.Pipe("a", "b", s.clock)
 
 	s.version = http.Version{1, 1}
 	s.defaultRequest = semantic.Request{
@@ -323,7 +323,7 @@ func TestWaitForRequestTestSuite(t *testing.T) {
 func (s *WaitForRequestTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
-	s.dst, s.src = pipe.NewPair("a", "b", s.clock)
+	s.dst, s.src = pipe.Pipe("a", "b", s.clock)
 
 	s.conn = &conn{con: s.dst, clock: s.clock}
 }
@@ -390,7 +390,7 @@ func TestReadRequestTestSuite(t *testing.T) {
 func (s *ReadRequestTestSuite) SetupTest() {
 	s.clock = clock.NewMock()
 
-	s.dst, s.src = pipe.NewPair("a", "b", s.clock)
+	s.dst, s.src = pipe.Pipe("a", "b", s.clock)
 
 	s.conn = &conn{
 		con:      s.dst,
@@ -505,7 +505,7 @@ func (s *WriteResponseTestSuite) SetupTest() {
 	s.clock = clock.NewMock()
 
 	s.outputBuf = bytes.NewBuffer(nil)
-	s.src, s.dst = pipe.NewPair("a", "b", s.clock)
+	s.src, s.dst = pipe.Pipe("a", "b", s.clock)
 
 	s.conn = &conn{
 		con:      s.src,

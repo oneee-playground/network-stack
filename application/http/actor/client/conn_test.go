@@ -48,7 +48,7 @@ func TestConnTestSuite(t *testing.T) {
 func (s *ConnTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
-	s.tConn, s.otherConn = pipe.NewPair("a", "b", s.clock)
+	s.tConn, s.otherConn = pipe.Pipe("a", "b", s.clock)
 
 	s.version = http.Version{1, 1}
 	s.maxSeats = 2

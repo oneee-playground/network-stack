@@ -37,7 +37,7 @@ func TestServerTestSuite(t *testing.T) {
 func (s *ServerTestSuite) SetupTest() {
 	s.clock = clock.NewMock()
 
-	s.transport = pipe.NewPipeTransport(s.clock)
+	s.transport = pipe.NewPipeTransport(s.clock, 0)
 	s.logger = slog.New(slog.DiscardHandler)
 
 	s.transportAddr = pipe.Addr{Name: "addr"}

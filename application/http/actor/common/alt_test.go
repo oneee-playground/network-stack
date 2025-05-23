@@ -15,7 +15,7 @@ func TestHandleAltPanic(t *testing.T) {
 		panic("haha I always panic")
 	}
 
-	conn, _ := pipe.NewPair("a", "b", clock.New())
+	conn, _ := pipe.Pipe("a", "b", clock.New())
 
 	c := NewHTTPWrappedConn(conn, conn, conn)
 

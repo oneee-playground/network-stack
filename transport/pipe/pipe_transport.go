@@ -9,19 +9,22 @@ import (
 )
 
 type pipeRequest struct {
-	conn     *pipe
+	conn     transport.Conn
 	accepted chan struct{}
 }
 
 type PipeTransport struct {
+	bufSize uint
+
 	listeners map[transport.Addr]*pipeListener
 	clock     clock.Clock
 
 	mu sync.Mutex
 }
 
-func NewPipeTransport(clock clock.Clock) *PipeTransport {
+func NewPipeTransport(clock clock.Clock, bufSize uint) *PipeTransport {
 	return &PipeTransport{
+		bufSize:   bufSize,
 		listeners: make(map[transport.Addr]*pipeListener),
 		clock:     clock,
 	}
@@ -38,7 +41,12 @@ func (pt *PipeTransport) Dial(ctx context.Context, addr transport.Addr) (transpo
 		return nil, transport.ErrNetUnreachable
 	}
 
-	p1, p2 := NewPair("dialer", addr.(Addr).Name, pt.clock)
+	var p1, p2 transport.Conn
+	if pt.bufSize == 0 {
+		p1, p2 = Pipe("dialer", addr.(Addr).Name, pt.clock)
+	} else {
+		p1, p2 = BufferedPipe("dialer", addr.(Addr).Name, pt.clock, pt.bufSize)
+	}
 
 	req := pipeRequest{
 		conn:     p2,

@@ -51,7 +51,7 @@ func (s *ServePipelineTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
 
-	s.tConn, s.otherConn = pipe.NewPair("a", "b", s.clock)
+	s.tConn, s.otherConn = pipe.Pipe("a", "b", s.clock)
 
 	s.version = http.Version{1, 1}
 	s.defaultRequest = semantic.Request{
@@ -264,7 +264,7 @@ func (s *PipelineReceiverTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
 
-	s.dst, s.src = pipe.NewPair("a", "b", s.clock)
+	s.dst, s.src = pipe.Pipe("a", "b", s.clock)
 
 	s.conn = &conn{
 		con:      s.dst,
@@ -403,7 +403,7 @@ func (s *PipelineSenderTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.clock = clock.NewMock()
 
-	s.src, s.dst = pipe.NewPair("a", "b", s.clock)
+	s.src, s.dst = pipe.Pipe("a", "b", s.clock)
 
 	s.conn = &conn{
 		con:      s.src,
@@ -499,7 +499,7 @@ func (s *PipelineWorkerTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.extraWorkers = 1
 
-	s.tConn, _ = pipe.NewPair("a", "b", clock.NewMock())
+	s.tConn, _ = pipe.Pipe("a", "b", clock.NewMock())
 
 	s.conn = &conn{
 		con: s.tConn,

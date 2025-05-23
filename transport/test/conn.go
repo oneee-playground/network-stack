@@ -167,14 +167,25 @@ func (s *ConnTestSuite) TestReadBeforeClose() {
 	s.Require().NoError(s.C1.Close())
 }
 
+// [transport.BufferedConn] might fail the close test due to its buffer.
+// So we make the input bigger than its buffer.
+func makeInputForConn(conn transport.Conn) []byte {
+	if c, ok := conn.(transport.BufferedConn); ok {
+		return make([]byte, c.WriteBufSize()+1)
+	}
+
+	return []byte("hey")
+}
+
 func (s *ConnTestSuite) TestWriteBeforeClose() {
+	input := makeInputForConn(s.C1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err := s.C1.Write([]byte("hey"))
+		_, err := s.C1.Write(input)
 		s.ErrorIs(err, transport.ErrConnClosed)
 	}()
 

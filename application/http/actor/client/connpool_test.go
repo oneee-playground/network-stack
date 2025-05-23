@@ -238,8 +238,8 @@ func (s *ConnPoolTestSuite) TestRequestBlockNotEmpty() {
 func (s *ConnPoolTestSuite) TestRequestRemoveClosedConns() {
 	timeout := 10 * time.Millisecond
 
-	c1, _ := pipe.NewPair("", "", nil)
-	c2, _ := pipe.NewPair("", "", nil)
+	c1, _ := pipe.Pipe("", "", nil)
+	c2, _ := pipe.Pipe("", "", nil)
 
 	idleConn := &conn{
 		con:       c1,
@@ -273,7 +273,7 @@ func (s *ConnPoolTestSuite) TestRequestRemoveClosedConns() {
 }
 
 func (s *ConnPoolTestSuite) TestRequestRemoveClosedConnsNewDial() {
-	c1, _ := pipe.NewPair("", "", nil)
+	c1, _ := pipe.Pipe("", "", nil)
 
 	closedConn := &conn{
 		con:       c1,
@@ -351,6 +351,6 @@ func (s *ConnPoolTestSuite) TestPutIdleWaiters() {
 }
 
 func newTransportAddr() transport.Addr {
-	p1, _ := pipe.NewPair("a", "b", nil) // just to use addr.
+	p1, _ := pipe.Pipe("a", "b", nil) // just to use addr.
 	return p1.LocalAddr()
 }

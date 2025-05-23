@@ -20,10 +20,8 @@ type pipe struct {
 	closed chan struct{}
 	once   sync.Once // making sure not to close closed channel.
 
-	clock clock.Clock
-
-	rdeadLine *deadLine
-	wdeadLine *deadLine
+	rdeadLine *chanDeadLine
+	wdeadLine *chanDeadLine
 
 	// the opposite pipe.
 	counterpart *pipe
@@ -42,23 +40,22 @@ func (p Addr) String() string            { return p.Name }
 var _ transport.Addr = Addr{}
 var _ transport.Conn = (*pipe)(nil)
 
-func NewPair(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
+// Pipe creates a pair of pipes. each of pipes will be synchronouse, unbuffered.
+func Pipe(name1, name2 string, clock clock.Clock) (c1, c2 *pipe) {
 	c1 = &pipe{
 		stream:    make(chan []byte),
 		nc:        make(chan int),
 		closed:    make(chan struct{}),
-		clock:     clock,
-		rdeadLine: newDeadLine(clock),
-		wdeadLine: newDeadLine(clock),
+		rdeadLine: newChanDeadLine(clock),
+		wdeadLine: newChanDeadLine(clock),
 		addr:      Addr{Name: name1},
 	}
 	c2 = &pipe{
 		stream:    make(chan []byte),
 		nc:        make(chan int),
 		closed:    make(chan struct{}),
-		clock:     clock,
-		rdeadLine: newDeadLine(clock),
-		wdeadLine: newDeadLine(clock),
+		rdeadLine: newChanDeadLine(clock),
+		wdeadLine: newChanDeadLine(clock),
 		addr:      Addr{Name: name2},
 	}
 	c1.counterpart, c2.counterpart = c2, c1
@@ -115,11 +112,11 @@ func (p *pipe) Write(b []byte) (n int, err error) {
 			b = b[n:]
 			nn += n
 		case <-p.closed:
-			return 0, transport.ErrConnClosed
+			return nn, transport.ErrConnClosed
 		case <-p.counterpart.closed:
-			return 0, transport.ErrConnClosed
+			return nn, transport.ErrConnClosed
 		case <-p.wdeadLine.wait():
-			return 0, transport.ErrDeadLineExceeded
+			return nn, transport.ErrDeadLineExceeded
 		}
 	}
 
@@ -129,7 +126,7 @@ func (p *pipe) Write(b []byte) (n int, err error) {
 func (p *pipe) checkReadOK() error  { return p._checkOK(p.rdeadLine) }
 func (p *pipe) checkWriteOK() error { return p._checkOK(p.wdeadLine) }
 
-func (p *pipe) _checkOK(d *deadLine) error {
+func (p *pipe) _checkOK(d *chanDeadLine) error {
 	switch {
 	case isClosed(p.closed):
 		return transport.ErrConnClosed
@@ -145,7 +142,7 @@ func (p *pipe) _checkOK(d *deadLine) error {
 func (p *pipe) SetReadDeadLine(t time.Time)  { p.rdeadLine.set(t) }
 func (p *pipe) SetWriteDeadLine(t time.Time) { p.wdeadLine.set(t) }
 
-type deadLine struct {
+type chanDeadLine struct {
 	clock clock.Clock
 
 	t *clock.Timer
@@ -154,14 +151,14 @@ type deadLine struct {
 	closed chan struct{}
 }
 
-func newDeadLine(clock clock.Clock) *deadLine {
-	return &deadLine{
+func newChanDeadLine(clock clock.Clock) *chanDeadLine {
+	return &chanDeadLine{
 		clock:  clock,
 		closed: make(chan struct{}),
 	}
 }
 
-func (d *deadLine) set(t time.Time) {
+func (d *chanDeadLine) set(t time.Time) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -185,7 +182,7 @@ func (d *deadLine) set(t time.Time) {
 	})
 }
 
-func (d *deadLine) wait() <-chan struct{} {
+func (d *chanDeadLine) wait() <-chan struct{} {
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.closed

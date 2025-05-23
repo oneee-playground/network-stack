@@ -23,6 +23,14 @@ type Conn interface {
 	SetWriteDeadLine(t time.Time)
 }
 
+// BufferedConn guarentees read/writes are internally buffered.
+// The size of the buffer MUST be more than 0.
+type BufferedConn interface {
+	Conn
+	ReadBufSize() uint
+	WriteBufSize() uint
+}
+
 var (
 	ErrAddrAlreadyInUse   = errors.New("address already in use")
 	ErrConnListenerClosed = errors.New("conn listener is closed")

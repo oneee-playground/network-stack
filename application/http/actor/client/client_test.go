@@ -59,7 +59,7 @@ func (s *ClientTestSuite) SetupTest() {
 	s.stubIP = stubIP{str: "this is actually stub"}
 	s.combineAddr = pipe.Addr{Name: "hello"}
 
-	s.transport = pipe.NewPipeTransport(s.clock)
+	s.transport = pipe.NewPipeTransport(s.clock, 0)
 	s.lookuper = domain.NewMapLookuper(map[string][]ip.Addr{"localhost": {s.stubIP}})
 	s.logger = slog.New(slog.DiscardHandler)
 
