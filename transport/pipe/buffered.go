@@ -9,6 +9,9 @@ import (
 	"github.com/benbjohnson/clock"
 )
 
+// See:
+// - https://github.com/golang/go/issues/24205
+// - https://github.com/golang/go/issues/34502
 type bufferedPipe struct {
 	addr Addr
 

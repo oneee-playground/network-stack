@@ -57,3 +57,23 @@ func (s *BufferedConnTestSuite) TestBothWrite() {
 		s.Equal(size1, n)
 	}()
 }
+
+func (s *BufferedConnTestSuite) TestReadAfterClose() {
+	c1 := s.C1.(transport.BufferedConn)
+	c2 := s.C2.(transport.BufferedConn)
+	size1 := int(c1.ReadBufSize())
+
+	n, err := c2.Write(make([]byte, size1))
+	s.Require().NoError(err)
+	s.Require().Equal(size1, n)
+
+	s.Require().NoError(c2.Close())
+
+	n, err = c1.Read(make([]byte, size1))
+	s.Require().NoError(err)
+	s.Equal(size1, n)
+
+	n, err = c1.Read(make([]byte, 1))
+	s.ErrorIs(err, transport.ErrConnClosed)
+	s.Zero(n)
+}
