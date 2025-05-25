@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestTLSInnerPlainTextFillFromShort(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestTLSTextReadFromWriteTo(t *testing.T) {
+func TestTLSTextFillFromWriteTo(t *testing.T) {
 	data := tlsText{
 		contentType:   typeApplicationData,
 		recordVersion: common.Version(0x0303), // TLS 1.2
@@ -65,14 +65,14 @@ func TestTLSTextReadFromWriteTo(t *testing.T) {
 
 	// Deserialize the record using ReadFrom
 	var parsed tlsText
-	n, err = parsed.ReadFrom(&buf)
+	read, err := parsed.fillFrom(&buf)
 	require.NoError(t, err)
-	require.Equal(t, int64(10), n)
+	require.Nil(t, read)
 
 	assert.Equal(t, data, parsed)
 }
 
-func TestTLSTextReadFromInvalidLen(t *testing.T) {
+func TestTLSTextFillFromInvalidLen(t *testing.T) {
 	// Prepare a record with an invalid length (exceeds maxRecordLen)
 	data := []byte{
 		byte(typeApplicationData), // contentType
@@ -81,7 +81,7 @@ func TestTLSTextReadFromInvalidLen(t *testing.T) {
 	}
 
 	var parsed tlsText
-	_, err := parsed.ReadFrom(bytes.NewReader(data))
+	_, err := parsed.fillFrom(bytes.NewReader(data))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "record length exceeds maximum allowed size")
 }

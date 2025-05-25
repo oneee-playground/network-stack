@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	iolib "network-stack/lib/io"
-	"network-stack/session/tls/internal/common"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/internal/util"
 
 	"github.com/pkg/errors"
@@ -24,10 +24,8 @@ const (
 
 // This could be plainText, cipherText.
 type tlsText struct {
-	// In case of cipherText, it's always set to applicationData for compatibility.
 	contentType contentType
-	// Always set to TLS 1.2. For backward compatibility,
-	// in case of initial ClientHello, it is set to TLS 1.0.
+	// Always set to TLS 1.2.
 	recordVersion common.Version // legacy.
 	length        uint16
 	fragment      []byte
@@ -60,12 +58,21 @@ func (t *tlsInnerPlainText) fillFrom(b []byte) error {
 	return nil
 }
 
-func (t *tlsText) ReadFrom(r io.Reader) (n int64, err error) {
+func (t *tlsText) metadata() []byte {
+	metadata := append([]byte{byte(t.contentType)}, t.recordVersion.Bytes()...)
+	metadata = append(metadata, util.ToBigEndianBytes(uint(t.length), 2)...)
+	return metadata
+}
+
+var errRecordTooLong = errors.New("record length exceeds maximum allowed size")
+
+// read is the bytes read when err != nil.
+func (t *tlsText) fillFrom(r io.Reader) (read []byte, err error) {
 	metadata := make([]byte, 5)
 
 	metaLen, err := io.ReadFull(r, metadata)
 	if err != nil {
-		return int64(metaLen), errors.Wrap(err, "reading metadata")
+		return metadata[:metaLen], errors.Wrap(err, "reading metadata")
 	}
 
 	t.contentType = contentType(metadata[0])
@@ -73,22 +80,20 @@ func (t *tlsText) ReadFrom(r io.Reader) (n int64, err error) {
 	t.length = binary.BigEndian.Uint16(metadata[3:5])
 
 	if t.length > maxRecordLen {
-		return int64(metaLen), errors.New("record length exceeds maximum allowed size")
+		return metadata[:metaLen], errRecordTooLong
 	}
 
 	t.fragment = make([]byte, t.length)
 	fragLen, err := io.ReadFull(r, t.fragment)
 	if err != nil {
-		return int64(metaLen + fragLen), errors.Wrap(err, "reading fragment")
+		return append(metadata, t.fragment[:fragLen]...), errors.Wrap(err, "reading fragment")
 	}
 
-	return int64(metaLen + fragLen), nil
+	return nil, nil
 }
-func (t tlsText) WriteTo(w io.Writer) (n int64, err error) {
-	metadata := append([]byte{byte(t.contentType)}, t.recordVersion.Bytes()...)
-	metadata = append(metadata, util.ToBigEndianBytes(uint(t.length), 2)...)
 
-	metaLen, err := iolib.WriteFull(w, metadata)
+func (t tlsText) WriteTo(w io.Writer) (n int64, err error) {
+	metaLen, err := iolib.WriteFull(w, t.metadata())
 	if err != nil {
 		return int64(metaLen), errors.Wrap(err, "writing metadata")
 	}
