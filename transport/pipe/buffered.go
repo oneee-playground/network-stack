@@ -32,8 +32,13 @@ type bufferedPipe struct {
 var _ transport.Conn = (*bufferedPipe)(nil)
 var _ transport.BufferedConn = (*bufferedPipe)(nil)
 
-// Pipe creates a pair of pipes. each of pipes will be asynchronouse, buffered.
+// BufferedPipe creates a pair of pipes. each of pipes will be asynchronouse, buffered.
+// Because BufferedPipe only writes/reads data through the buffer, bufSize MUST be more than 0.
 func BufferedPipe(name1, name2 string, clock clock.Clock, bufSize uint) (c1, c2 *bufferedPipe) {
+	if bufSize == 0 {
+		panic("buffer size cannot be 0")
+	}
+
 	c1 = &bufferedPipe{
 		buf:       bytes.NewBuffer(make([]byte, 0, bufSize)),
 		rdeadLine: newDeadLine(clock),

@@ -24,7 +24,6 @@ type Conn interface {
 }
 
 // BufferedConn guarentees read/writes are internally buffered.
-// The size of the buffer MUST be more than 0.
 type BufferedConn interface {
 	Conn
 	ReadBufSize() uint
