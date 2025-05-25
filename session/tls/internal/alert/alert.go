@@ -8,8 +8,8 @@ import (
 type Level uint8
 
 const (
-	LevelWarning = 1
-	LevelFatal   = 2
+	LevelWarning Level = 1
+	LevelFatal   Level = 2
 )
 
 type Description uint8
@@ -53,11 +53,72 @@ func (a Alert) Bytes() []byte {
 	return []byte{byte(a.Level), byte(a.Description)}
 }
 
-func AlertFromBytes(b [2]byte) Alert {
+func FromBytes(b [2]byte) Alert {
 	return Alert{
 		Level:       Level(b[0]),
 		Description: Description(b[1]),
 	}
+}
+
+func (d Description) String() string {
+	switch d {
+	case CloseNotify:
+		return "close_notify"
+	case UnexpectedMessage:
+		return "unexpected_message"
+	case BadRecordMAC:
+		return "bad_record_mac"
+	case RecordOverflow:
+		return "record_overflow"
+	case HandshakeFailure:
+		return "handshake_failure"
+	case BadCertificate:
+		return "bad_certificate"
+	case UnsupportedCertificate:
+		return "unsupported_certificate"
+	case CertificateRevoked:
+		return "certificate_revoked"
+	case CertificateExpired:
+		return "certificate_expired"
+	case CertificateUnknown:
+		return "certificate_unknown"
+	case IllegalParameter:
+		return "illegal_parameter"
+	case UnknownCA:
+		return "unknown_ca"
+	case AccessDenied:
+		return "access_denied"
+	case DecodeError:
+		return "decode_error"
+	case DecryptError:
+		return "decrypt_error"
+	case ProtocolVersion:
+		return "protocol_version"
+	case InsufficientSecurity:
+		return "insufficient_security"
+	case InternalError:
+		return "internal_error"
+	case InappropriateFallback:
+		return "inappropriate_fallback"
+	case UserCanceled:
+		return "user_canceled"
+	case MissingExtension:
+		return "missing_extension"
+	case UnsupportedExtension:
+		return "unsupported_extension"
+	case UnrecognizedName:
+		return "unrecognized_name"
+	case BadCertificateStatusResponse:
+		return "bad_certificate_status_response"
+	case UnknownPSKIdentity:
+		return "unknown_psk_identity"
+	case CertificateRequired:
+		return "certificate_required"
+	case NoApplicationProtocol:
+		return "no_application_protocol"
+	}
+
+	return fmt.Sprintf("unknown: %d", d)
 }
 
 type Error struct {
@@ -73,15 +134,16 @@ func NewError(cause error, desc Description) Error {
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("alert(%d), %s", e.Description, e.cause.Error())
+	msg := ""
+	if e.cause != nil {
+		msg = e.cause.Error()
+	}
+
+	return fmt.Sprintf("alert(%s), %s", e.Description.String(), msg)
 }
 
 func (e Error) Cause() error {
 	return e.cause
-}
-
-func (e Error) IsOurs() bool {
-	return e.cause != nil
 }
 
 func (e Error) Is(err error) bool {
