@@ -172,3 +172,16 @@ func Extract[T Extension](raws []Raw, tmpl T) (T, error) {
 
 	return tmpl, nil
 }
+
+func Equal[T Extension](a, b T) bool {
+	switch {
+	case a.exists() != b.exists():
+		return false
+	case !a.exists() && !b.exists():
+		return true
+	default:
+		// TODO: Make it more performant?
+		// Like adding Equals for each extensions.
+		return bytes.Equal(a.Data(), b.Data())
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util"
+	"slices"
 
 	"github.com/pkg/errors"
 )
@@ -20,16 +21,21 @@ type ClientHello struct {
 	CompressionMethods []byte // Legacy. It should be set to one zero-value byte. Meaning "null" compression method.
 
 	// Extensions for CH.
-	ExtSupportedVersions  *extension.SupportedVersionsCH
-	ExtSupportedGroups    *extension.SupportedGroups
+	ExtSupportedVersions *extension.SupportedVersionsCH
+	// DHE
+	ExtSupportedGroups *extension.SupportedGroups
+	ExtKeyShares       *extension.KeyShareCH
+	// HRR
+	ExtCookie *extension.Cookie
+	// Certificate
 	ExtSignatureAlgos     *extension.SignatureAlgos
 	ExtSignatureAlgosCert *extension.SignatureAlgosCert
-	ExtEarlyData          *extension.EarlyDataCH
 	ExtCertAuthorities    *extension.CertAuthorities
 	ExtServerNameList     *extension.ServerNameList
-	ExtKeyShares          *extension.KeyShareCH
-	ExtPreSharedKey       *extension.PreSharedKeyCH
-	ExtCookie             *extension.Cookie
+	// PSK
+	ExtPskMode      *extension.PskKeyExchangeModes
+	ExtEarlyData    *extension.EarlyDataCH
+	ExtPreSharedKey *extension.PreSharedKeyCH
 }
 
 var _ Handshake = (*ClientHello)(nil)
@@ -56,8 +62,9 @@ func (c *ClientHello) data() []byte {
 		c.ExtCertAuthorities,
 		c.ExtServerNameList,
 		c.ExtKeyShares,
-		c.ExtPreSharedKey,
 		c.ExtCookie,
+		c.ExtPskMode,
+		c.ExtPreSharedKey,
 	)
 	extension.WriteRaws(raws, buf)
 
@@ -81,8 +88,9 @@ func (c *ClientHello) length() types.Uint24 {
 		c.ExtCertAuthorities,
 		c.ExtServerNameList,
 		c.ExtKeyShares,
-		c.ExtPreSharedKey,
 		c.ExtCookie,
+		c.ExtPskMode,
+		c.ExtPreSharedKey,
 	))
 
 	return types.NewUint24(dLen)
@@ -144,14 +152,70 @@ func (c *ClientHello) fillFrom(b []byte) (err error) {
 	if c.ExtKeyShares, err = extension.Extract(raws, c.ExtKeyShares); err != nil {
 		return errors.Wrap(err, "key shares")
 	}
-	if c.ExtPreSharedKey, err = extension.Extract(raws, c.ExtPreSharedKey); err != nil {
-		return errors.Wrap(err, "pre-shared key")
-	}
 	if c.ExtCookie, err = extension.Extract(raws, c.ExtCookie); err != nil {
 		return errors.Wrap(err, "cookie")
 	}
+	if c.ExtPskMode, err = extension.Extract(raws, c.ExtPskMode); err != nil {
+		return errors.Wrap(err, "psk key exchange mode")
+	}
+	if c.ExtPreSharedKey, err = extension.Extract(raws, c.ExtPreSharedKey); err != nil {
+		return errors.Wrap(err, "pre-shared key")
+	}
 
 	return nil
+}
+
+// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2
+func (c *ClientHello) RetryValid(retried *ClientHello, cookie []byte) (foundCookie bool, err error) {
+	if c.Version != retried.Version {
+		return false, errors.New("version doesn't match")
+	}
+	if !bytes.Equal(c.Random[:], retried.Random[:]) {
+		return false, errors.New("random doesn't match")
+	}
+	if !slices.Equal(c.CipherSuites, retried.CipherSuites) {
+		return false, errors.New("cipher suites don't match")
+	}
+	if !bytes.Equal(c.CompressionMethods, retried.CompressionMethods) {
+		// This was already validated by compariing with [0x00].
+		// But I'll leave this for future implementations like compatibility with TLS 1.2.
+		return false, errors.New("compression methods don't match")
+	}
+	if !extension.Equal(c.ExtSupportedVersions, retried.ExtSupportedVersions) {
+		return false, errors.New("supported versions don't match")
+	}
+	if !extension.Equal(c.ExtSupportedGroups, retried.ExtSupportedGroups) {
+		return false, errors.New("supported groups don't match")
+	}
+	if !extension.Equal(c.ExtSignatureAlgos, retried.ExtSignatureAlgos) {
+		return false, errors.New("signature algorithms don't match")
+	}
+	if !extension.Equal(c.ExtSignatureAlgosCert, retried.ExtSignatureAlgosCert) {
+		return false, errors.New("signature algorithms cert don't match")
+	}
+	if !extension.Equal(c.ExtCertAuthorities, retried.ExtCertAuthorities) {
+		return false, errors.New("cert authorities don't match")
+	}
+	if !extension.Equal(c.ExtServerNameList, retried.ExtServerNameList) {
+		return false, errors.New("sni don't match")
+	}
+	if !extension.Equal(c.ExtPskMode, retried.ExtPskMode) {
+		return false, errors.New("psk mode don't match")
+	}
+
+	if retried.ExtEarlyData != nil {
+		return false, errors.New("early data is prohibited")
+	}
+
+	if foundCookie := retried.ExtCookie; foundCookie != nil {
+		if cookie != nil && !bytes.Equal(foundCookie.Cookie, cookie) {
+			return false, errors.New("invalid cookie")
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.3

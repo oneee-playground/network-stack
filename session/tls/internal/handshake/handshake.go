@@ -1,10 +1,10 @@
 package handshake
 
 import (
-	"crypto"
 	"encoding/binary"
 	"network-stack/lib/types"
 	"network-stack/session/tls/common"
+	"network-stack/session/tls/common/ciphersuite"
 
 	"github.com/pkg/errors"
 )
@@ -85,8 +85,8 @@ func (m *messageHash) length() types.Uint24 {
 
 var _ Handshake = (*messageHash)(nil)
 
-func MakeMessageHash(hash crypto.Hash, hello *ClientHello) *messageHash {
-	h := hash.New()
+func MakeMessageHash(suite ciphersuite.Suite, hello *ClientHello) *messageHash {
+	h := suite.Hash().New()
 	h.Write(ToBytes(hello))
 	helloHash := h.Sum(nil)
 
