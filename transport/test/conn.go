@@ -200,15 +200,46 @@ func (s *ConnTestSuite) TestReadDeadLine() {
 	n, err := s.C1.Read(b)
 	s.ErrorIs(err, transport.ErrDeadLineExceeded)
 	s.Zero(n)
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.C2.Write([]byte{'a'})
+		s.NoError(err)
+	}()
+
+	s.C1.SetReadDeadLine(time.Time{})
+
+	n, err = s.C1.Read(b)
+	s.NoError(err)
+	s.Equal(1, n)
 }
 
 func (s *ConnTestSuite) TestWriteDeadLine() {
 	s.C1.SetWriteDeadLine(s.Clock.Now().Add(-time.Second))
 
-	b := make([]byte, 1)
-	n, err := s.C1.Write(b)
+	n, err := s.C1.Write([]byte{'a'})
 	s.ErrorIs(err, transport.ErrDeadLineExceeded)
 	s.Zero(n)
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.C2.Read(make([]byte, 1))
+		s.NoError(err)
+	}()
+
+	s.C1.SetWriteDeadLine(time.Time{})
+
+	n, err = s.C1.Write([]byte{'a'})
+	s.NoError(err)
+	s.Equal(1, n)
 }
 
 func (s *ConnTestSuite) TestAddr() {

@@ -189,9 +189,9 @@ func (d *deadline) set(t time.Time, onExceed func()) {
 		d.timer = nil
 	}
 
-	if !t.IsZero() {
-		d.t = t
+	d.t = t
 
+	if !t.IsZero() {
 		d.timer = d.clock.AfterFunc(d.clock.Until(t), func() {
 			d.m.Lock()
 			defer d.m.Unlock()
