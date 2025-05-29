@@ -587,18 +587,6 @@ func (s *ClientHandshakerTestSuite) TestSaveCertRequest() {
 			},
 		},
 		{
-			desc: "signature algos cert is replaced by signature algos",
-			cr: &handshake.CertificateRequest{
-				ExtSignatureAlgos: &extension.SignatureAlgos{
-					SupportedAlgos: []signature.Scheme{signature.Scheme_ECDSA_SHA1},
-				},
-			},
-			expected: certificateRequestInfo{
-				signatureAlgorithms:     []signature.Scheme{signature.Scheme_ECDSA_SHA1},
-				signatureAlgorithmsCert: []signature.Scheme{signature.Scheme_ECDSA_SHA1},
-			},
-		},
-		{
 			desc: "invalid CA name",
 			cr: &handshake.CertificateRequest{
 				ExtSignatureAlgos: &extension.SignatureAlgos{

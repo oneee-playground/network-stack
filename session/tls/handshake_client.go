@@ -766,15 +766,9 @@ func (c *clientHandshaker) saveCertRequest(cr *handshake.CertificateRequest) err
 	// We should echo it later.
 	cri := certificateRequestInfo{requestContext: cr.CertRequestContext}
 
-	signatureAlgos := cr.ExtSignatureAlgos
-	cri.signatureAlgorithms = signatureAlgos.SupportedAlgos
-
-	signatureAlgosCert := cr.ExtSignatureAlgosCert
-	if signatureAlgosCert != nil {
-		cri.signatureAlgorithmsCert = signatureAlgosCert.SupportedAlgos
-	} else {
-		cri.signatureAlgorithmsCert = cri.signatureAlgorithms
-	}
+	algo, algoCert := determineSignatureAlgos(cr.ExtSignatureAlgos, cr.ExtSignatureAlgosCert)
+	cri.signatureAlgorithms = algo
+	cri.signatureAlgorithmsCert = algoCert
 
 	if ca := cr.ExtCertAuthorities; ca != nil {
 		cri.acceptableCA = make([]pkix.Name, 0, len(ca.Authorities))
