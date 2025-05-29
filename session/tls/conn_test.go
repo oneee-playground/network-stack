@@ -429,8 +429,8 @@ func (s *ProtectorTestSuite) TestEncryptDecrypt() {
 	record := tlsText{
 		contentType:   typeAlert,
 		recordVersion: common.VersionTLS12,
-		length:        0,
-		fragment:      nil,
+		length:        1,
+		fragment:      []byte("a"),
 	}
 
 	encrypted, err := s.p.encrypt(record)

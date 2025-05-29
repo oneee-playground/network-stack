@@ -527,17 +527,19 @@ var errNeedKeyUpdate = errors.New("key update is needed")
 func (p *protector) encrypt(record tlsText) (tlsText, error) {
 	nonce := p.getNonce()
 
-	// We must provide ciphertext's length to the additional data.
-	record.length = uint16(len(record.fragment) + p.cipher.Overhead())
-
-	sealed := p.cipher.Seal(nil, nonce, record.fragment, record.metadata())
-
-	encrypted := tlsText{
-		contentType:   record.contentType,
-		recordVersion: record.recordVersion,
-		length:        uint16(len(sealed)),
-		fragment:      sealed,
+	innerRecord := tlsInnerPlainText{
+		content:     record.fragment,
+		contentType: record.contentType,
+		zeros:       nil, // We don't do padding for now.
 	}
+	plaintext := innerRecord.bytes()
+
+	encrypted := record
+	encrypted.contentType = typeApplicationData
+	// We must provide ciphertext's length to the additional data.
+	encrypted.length = uint16(len(plaintext) + p.cipher.Overhead())
+
+	encrypted.fragment = p.cipher.Seal(nil, nonce, plaintext, encrypted.metadata())
 
 	p.incrNonce()
 
@@ -561,11 +563,16 @@ func (p *protector) decrypt(record tlsText) (tlsText, error) {
 		return tlsText{}, errors.Wrap(err, "opening record")
 	}
 
+	var innerRecord tlsInnerPlainText
+	if err := innerRecord.fillFrom(opened); err != nil {
+		return tlsText{}, errors.Wrap(err, "creating inner plain text")
+	}
+
 	decrypted := tlsText{
-		contentType:   record.contentType,
+		contentType:   innerRecord.contentType,
 		recordVersion: record.recordVersion,
-		length:        uint16(len(opened)),
-		fragment:      opened,
+		length:        uint16(len(innerRecord.content)),
+		fragment:      innerRecord.content,
 	}
 
 	p.incrNonce()
