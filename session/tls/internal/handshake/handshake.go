@@ -48,14 +48,16 @@ func FromBytes(raw []byte, h Handshake) error {
 		return ErrNotExpectedHandshakeType
 	}
 
-	if len(raw[4:]) < int(l) {
+	data := raw[4:]
+
+	if len(data) < int(l) {
 		return common.ErrNeedMoreBytes
 	}
-	if len(raw[4:]) > int(l) {
+	if len(data) > int(l) {
 		return errors.New("data longer than advertised")
 	}
 
-	if err := h.fillFrom(raw[4:]); err != nil {
+	if err := h.fillFrom(data); err != nil {
 		return errors.Wrap(err, "reading handshake message data")
 	}
 

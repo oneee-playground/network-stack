@@ -76,3 +76,16 @@ func TestSignatureAlgosCert(t *testing.T) {
 
 	testExtension(t, orig, TypeSignatureAlgosCert)
 }
+
+func TestServerNameList(t *testing.T) {
+	orig := &ServerNameList{
+		ServerNameList: []ServerName{
+			{
+				NameType: ServerNameTypeHostName,
+				Name:     []byte("the name"),
+			},
+		},
+	}
+
+	testExtension(t, orig, TypeServerName)
+}

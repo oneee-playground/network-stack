@@ -5,6 +5,7 @@ import (
 
 	"network-stack/lib/types"
 	"network-stack/session/tls/common"
+	"network-stack/session/tls/common/ciphersuite"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,20 @@ func TestHandshakeFromBytesWrongType(t *testing.T) {
 
 	err := FromBytes(raw, hs)
 	assert.ErrorIs(t, err, ErrNotExpectedHandshakeType)
+}
+
+func TestHandshakeToBytesFromBytes(t *testing.T) {
+	var given, got ClientHello
+	given = ClientHello{
+		SessionID:          []uint8{},
+		CipherSuites:       []ciphersuite.ID{},
+		CompressionMethods: []byte{0x00},
+	}
+
+	b := ToBytes(&given)
+	require.NoError(t, FromBytes(b, &got))
+
+	assert.Equal(t, given, got)
 }
 
 func testHandshake(t *testing.T, input Handshake, decoded Handshake, wantType handshakeType) {

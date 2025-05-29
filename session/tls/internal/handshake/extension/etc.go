@@ -274,8 +274,8 @@ func (s *ServerNameList) exists() bool                 { return s != nil }
 func (s *ServerNameList) Length() uint16 {
 	l := uint16(2)
 	for _, name := range s.ServerNameList {
-		l += uint16(1)
-		l += uint16(len(name.Name))
+		l += uint16(1) // type
+		l += 2 + uint16(len(name.Name))
 	}
 	return l
 }
