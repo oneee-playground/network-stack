@@ -1,7 +1,6 @@
 package tls
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/x509/pkix"
 	"hash"
@@ -36,6 +35,9 @@ type serverHandshaker struct {
 	// cookie is opaque sequence of bytes to be used on HRR.
 	// RFC doesn't specify which parameters should consist the cookie.
 	cookie []byte
+
+	earlySecret  []byte
+	sharedSecret []byte
 }
 
 func newHandshakerServer(conn *Conn, clock clock.Clock, opts HandshakeServerOptions) (*serverHandshaker, error) {
@@ -44,6 +46,13 @@ func newHandshakerServer(conn *Conn, clock clock.Clock, opts HandshakeServerOpti
 		clock:   clock,
 		opts:    opts,
 		session: &Session{},
+	}
+
+	for idx, chain := range opts.CertChains {
+		if err := chain.load(); err != nil {
+			return nil, errors.Wrap(err, "failed to load certificate chain")
+		}
+		opts.CertChains[idx] = chain
 	}
 
 	sh.certStore = certStore{
@@ -66,6 +75,16 @@ func newHandshakerServer(conn *Conn, clock clock.Clock, opts HandshakeServerOpti
 var _ handshaker = (*serverHandshaker)(nil)
 
 func (s *serverHandshaker) keyExchange() (err error) {
+	defer func() {
+		if err != nil {
+			return
+		}
+
+		if err = s.encryptHandshake(); err != nil {
+			err = errors.Wrap(err, "encrypting handshake")
+		}
+	}()
+
 	clientHello, err := s.recvClientHello(nil)
 	if err != nil {
 		return errors.Wrap(err, "receiving client hello")
@@ -167,7 +186,7 @@ func (s *serverHandshaker) sendServerHello(
 	transcript hash.Hash,
 ) (*handshake.ServerHello, error) {
 	sh, err := s.makeServerHello(clientHello)
-	if err != nil {
+	if err != nil && !sh.IsHelloRetry() {
 		return nil, errors.Wrap(err, "creating server hello")
 	}
 
@@ -190,12 +209,18 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 	var retryErr error
 
 	defer func() {
+		if err != nil {
+			return
+		}
+
 		if retryErr != nil {
 			sh.ToHelloRetry()
 
 			// This is temporary.
 			s.cookie = handshake.ToBytes(ch)
 			sh.ExtCookie = &extension.Cookie{Cookie: s.cookie}
+
+			err = retryErr
 		}
 	}()
 
@@ -225,7 +250,6 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 	// DHE key exchange extension exists when:
 	// - PSK is not used
 	// - PSK is used and psk mode is psk_dhe_ke
-	var shared []byte
 	if sg := ch.ExtSupportedGroups; sg != nil {
 		useKe := s.selectKeyExchangeGroup(sg.NamedGroupList)
 		if len(useKe) == 0 {
@@ -262,14 +286,14 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 			},
 		}
 
-		shared, err = ke.GenSharedSecret(privKey, remotePubKey)
+		shared, err := ke.GenSharedSecret(privKey, remotePubKey)
 		if err != nil {
 			err := errors.Wrap(err, "generating shared secret")
 			return nil, alert.NewError(err, alert.IllegalParameter)
 		}
+		s.sharedSecret = shared
 	}
 
-	var earlySecret []byte
 	if psk := ch.ExtPreSharedKey; psk != nil {
 		_ = ch.ExtPskMode.KeModes[0] // Just indicating it exists.
 
@@ -277,15 +301,9 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 			_, ok := s.getSession(id.Identity)
 			// TODO: later.
 			_ = ok
+
+			s.earlySecret = nil
 		}
-	}
-
-	if err := s.session.setEarlySecret(earlySecret); err != nil {
-		return nil, errors.Wrap(err, "setting early secret")
-	}
-
-	if err := s.session.setHandshakeSecret(s.conn, shared); err != nil {
-		return nil, errors.Wrap(err, "setting handshake secret")
 	}
 
 	return sh, nil
@@ -348,6 +366,18 @@ func (s *serverHandshaker) selectKeyShare(
 	return keyexchange.Group{}, nil, false
 }
 
+func (s *serverHandshaker) encryptHandshake() error {
+	if err := s.session.setEarlySecret(s.earlySecret); err != nil {
+		return errors.Wrap(err, "setting early secret")
+	}
+
+	if err := s.session.setHandshakeSecret(s.conn, s.sharedSecret); err != nil {
+		return errors.Wrap(err, "setting handshake secret")
+	}
+
+	return nil
+}
+
 func (s *serverHandshaker) recvClientHello(transcript hash.Hash) (*handshake.ClientHello, error) {
 	var clientHello handshake.ClientHello
 	if _, err := s.conn.readHandshake(&clientHello, transcript); err != nil {
@@ -372,8 +402,7 @@ func (s *serverHandshaker) validateClientHello(ch *handshake.ClientHello) error 
 		return alert.NewError(errors.New("only TLS 1.3 is supported"), alert.ProtocolVersion)
 	}
 
-	if !bytes.Equal(ch.CompressionMethods, []byte{0x00}) {
-		// On TLS 1.3, compression method should set to zero. meaning null.
+	if len(ch.CompressionMethods) > 0 {
 		return alert.NewError(errors.New("only null compression is allowed"), alert.IllegalParameter)
 	}
 
@@ -463,7 +492,7 @@ func (s *serverHandshaker) serverParameters() error {
 		return errors.Wrap(err, "sending encrypted extensions")
 	}
 
-	if !s.session.resumed && s.certStore.wantAuth() {
+	if !s.session.resumed && s.certStore.needRemoteAuth() {
 		// We need to authenticate client.
 		if _, err := s.sendCertRequest(); err != nil {
 			return errors.Wrap(err, "sending certificate request")
@@ -541,7 +570,7 @@ func (s *serverHandshaker) authentication() error {
 	if !s.session.resumed {
 		chain, ok := s.certStore.findCertChain()
 		if !ok {
-			err := errors.New("could not found matching chain")
+			err := errors.New("could not find matching chain")
 			return alert.NewError(err, alert.HandshakeFailure)
 		}
 
@@ -556,6 +585,10 @@ func (s *serverHandshaker) authentication() error {
 
 	if err := s.sendFinished(); err != nil {
 		return errors.Wrap(err, "sending finished")
+	}
+
+	if err := s.session.setMasterSecret(s.conn); err != nil {
+		return errors.Wrap(err, "setting application traffic key")
 	}
 
 	if !s.session.resumed && s.clientCert {

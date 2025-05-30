@@ -44,8 +44,10 @@ type Conn struct {
 	lastHandshake []byte
 }
 
-var _ transport.Conn = (*Conn)(nil)
+var _ transport.BufferedConn = (*Conn)(nil)
 
+func (conn *Conn) ReadBufSize() uint            { return 0 }
+func (conn *Conn) WriteBufSize() uint           { return 0 }
 func (conn *Conn) LocalAddr() transport.Addr    { return conn.underlying.LocalAddr() }
 func (conn *Conn) RemoteAddr() transport.Addr   { return conn.underlying.RemoteAddr() }
 func (conn *Conn) SetReadDeadLine(t time.Time)  { conn.underlying.SetReadDeadLine(t) }
@@ -69,10 +71,12 @@ func (conn *Conn) SoftClose(dontDrain bool) (err error) {
 		return ErrSessionClosed
 	}
 
-	deadLine := conn.clock.Now().Add(conn.closeTimeout)
+	if conn.closeTimeout != 0 {
+		deadLine := conn.clock.Now().Add(conn.closeTimeout)
 
-	conn.underlying.SetWriteDeadLine(deadLine)
-	conn.underlying.SetReadDeadLine(deadLine)
+		conn.underlying.SetWriteDeadLine(deadLine)
+		conn.underlying.SetReadDeadLine(deadLine)
+	}
 	defer func() {
 		conn.underlying.SetWriteDeadLine(time.Time{})
 		conn.underlying.SetReadDeadLine(time.Time{})
@@ -99,8 +103,6 @@ func (conn *Conn) SoftClose(dontDrain bool) (err error) {
 		}
 	}
 }
-
-var errUnexpectedContentType = errors.New("unexpected content type")
 
 // After an error occurs, (except [transport.ErrDeadLineExceeded])
 // the connection is broken. So the caller must only close the underlying connection.
@@ -177,7 +179,7 @@ func (conn *Conn) readRecordMaybeKeyUpdate(wantType contentType, decrypt, keyUpd
 			return conn.readRecordMaybeKeyUpdate(wantType, decrypt, false)
 		}
 
-		return record, errUnexpectedContentType
+		return record, errors.Errorf("unexpected content type: %d", record.contentType)
 	}
 
 	return record, nil

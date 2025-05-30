@@ -50,7 +50,7 @@ func (s *ServerHandshakerTestSuite) SetupTest() {
 
 	s.rootCert, s.rootPriv = newRootCert(s.clock)
 
-	cert, raw, priv := issueNewCert(defaultCertTemplate(s.clock), s.rootCert, s.rootPriv)
+	cert, priv := issueNewCert(defaultCertTemplate(s.clock), s.rootCert, s.rootPriv)
 	sigAlgo, _ := signature.AlgorithmFromX509Cert(cert)
 
 	s.opts = HandshakeServerOptions{
@@ -60,7 +60,7 @@ func (s *ServerHandshakerTestSuite) SetupTest() {
 			KeyExchangeMethods: []keyexchange.Group{s.keGroup},
 			SignatureAlgos:     []signature.Algorithm{sigAlgo},
 			CertChains: []CertificateChain{{
-				Chain:   [][]byte{raw},
+				Chain:   [][]byte{cert.Raw},
 				PrivKey: priv,
 			}},
 			TrustedCerts: []*x509.Certificate{s.rootCert},
@@ -162,7 +162,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 		desc       string
 		modifyOpts func(opts *HandshakeServerOptions)
 		ch         *handshake.ClientHello
-		expect     func(sh *handshake.ServerHello, usedMostPreffered bool, session *Session)
+		expect     func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte)
 		wantErr    bool
 	}{
 		{
@@ -182,7 +182,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, session *Session) {
+			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
 				// Validate fields.
 				s.Equal(common.VersionTLS12, sh.Version)
 				s.Len(sh.Random, 32)
@@ -199,7 +199,8 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 
 				s.True(usedMostPreffered)
 
-				s.NotNil(session.secret)
+				s.Nil(earlySecret)
+				s.NotNil(sharedSecret)
 			},
 		},
 		{
@@ -220,7 +221,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, session *Session) {
+			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
 				// Skip validating fields.
 
 				// Key Share
@@ -229,7 +230,8 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 
 				s.False(usedMostPreffered)
 
-				s.NotNil(session.secret)
+				s.Nil(earlySecret)
+				s.NotNil(sharedSecret)
 			},
 		},
 		{
@@ -250,7 +252,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, session *Session) {
+			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
 				// Skip validating fields.
 				s.True(sh.IsHelloRetry())
 				s.NotNil(sh.ExtCookie)
@@ -261,8 +263,10 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 
 				s.False(usedMostPreffered)
 
-				s.Nil(session.secret)
+				s.Nil(earlySecret)
+				s.Nil(sharedSecret)
 			},
+			wantErr: true,
 		},
 		{
 			desc:       "no common ke method",
@@ -272,6 +276,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					NamedGroupList: []keyexchange.GroupID{},
 				},
 			},
+			expect:  func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {},
 			wantErr: true,
 		},
 		{
@@ -291,6 +296,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
+			expect:  func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {},
 			wantErr: true,
 		},
 	}
@@ -299,23 +305,25 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 		s.Run(tc.desc, func() {
 			// Maybe just seperate it using test functions?
 			s.hs.usedMostPreferredKE = false
+			s.hs.earlySecret = nil
+			s.hs.sharedSecret = nil
 			s.hs.session.version = common.VersionTLS13
 			s.hs.session.cipherSuite = s.ciphersuite
-			s.hs.session.transcript = s.ciphersuite.Hash().New()
-			s.hs.session.secret = nil
 			s.hs.conn = &Conn{in: newProtector(), out: newProtector()}
 			s.hs.opts = s.opts
 
 			tc.modifyOpts(&s.hs.opts)
 
 			sh, err := s.hs.makeServerHello(tc.ch)
-			if tc.wantErr {
-				s.Error(err)
+
+			defer tc.expect(sh, s.hs.usedMostPreferredKE, s.hs.earlySecret, s.hs.sharedSecret)
+
+			if !tc.wantErr {
+				s.NoError(err)
 				return
 			}
-			s.Require().NoError(err)
 
-			tc.expect(sh, s.hs.usedMostPreferredKE, s.hs.session)
+			s.Error(err)
 		})
 	}
 }
@@ -325,7 +333,7 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 		Version:            common.VersionTLS12,
 		SessionID:          make([]byte, 1),
 		CipherSuites:       []ciphersuite.ID{ciphersuite.TLS_AES_128_GCM_SHA256},
-		CompressionMethods: []byte{0},
+		CompressionMethods: []byte{},
 		ExtSupportedVersions: &extension.SupportedVersionsCH{
 			Versions: []common.Version{common.VersionTLS13},
 		},

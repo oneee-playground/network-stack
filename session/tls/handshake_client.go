@@ -58,6 +58,13 @@ func newHandshakerClient(conn *Conn, clock clock.Clock, opts HandshakeClientOpti
 		session: &Session{},
 	}
 
+	for idx, chain := range opts.CertChains {
+		if err := chain.load(); err != nil {
+			return nil, errors.Wrap(err, "failed to load certificate chain")
+		}
+		opts.CertChains[idx] = chain
+	}
+
 	ch.certStore = certStore{
 		isServer:       false,
 		signatureAlgos: opts.SignatureAlgos,
@@ -347,7 +354,7 @@ func (c *clientHandshaker) sendClientHello() (ch *handshake.ClientHello, err err
 		return nil, errors.Wrap(err, "making client hello")
 	}
 
-	return nil, c.conn.writeHandshake(ch, nil)
+	return ch, c.conn.writeHandshake(ch, nil)
 }
 
 func (c *clientHandshaker) startEarlyData() error {

@@ -52,7 +52,7 @@ func (s *ClientHandshakerTestSuite) SetupTest() {
 
 	s.rootCert, s.rootPriv = newRootCert(s.clock)
 
-	cert, raw, priv := issueNewCert(defaultCertTemplate(s.clock), s.rootCert, s.rootPriv)
+	cert, priv := issueNewCert(defaultCertTemplate(s.clock), s.rootCert, s.rootPriv)
 	sigAlgo, _ := signature.AlgorithmFromX509Cert(cert)
 
 	s.opts = HandshakeClientOptions{
@@ -62,7 +62,7 @@ func (s *ClientHandshakerTestSuite) SetupTest() {
 			KeyExchangeMethods: []keyexchange.Group{s.keGroup},
 			SignatureAlgos:     []signature.Algorithm{sigAlgo},
 			CertChains: []CertificateChain{{
-				Chain:   [][]byte{raw},
+				Chain:   [][]byte{cert.Raw},
 				PrivKey: priv,
 			}},
 			TrustedCerts: []*x509.Certificate{s.rootCert},

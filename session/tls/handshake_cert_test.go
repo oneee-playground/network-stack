@@ -20,10 +20,10 @@ import (
 
 func TestCertificateRequestInfoMatches(t *testing.T) {
 	root, priv := newRootCert(clock.New())
-	cert, raw, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
+	cert, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
 
 	chain := CertificateChain{
-		Chain:   [][]byte{raw},
+		Chain:   [][]byte{cert.Raw},
 		PrivKey: myPriv,
 	}
 	require.NoError(t, chain.load())
@@ -50,10 +50,10 @@ func (s *CertificateChainTestSuite) TestLoad() {
 	// This could be the example usage of how to pass certificate.
 
 	root, priv := newRootCert(clock.New())
-	_, raw, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
+	cert, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
 
 	chain := CertificateChain{
-		Chain:   [][]byte{raw},
+		Chain:   [][]byte{cert.Raw},
 		PrivKey: myPriv,
 	}
 
@@ -76,12 +76,12 @@ func (s *CertStoreTestSuite) SetupTest() {
 	algos := []signature.Scheme{algo.ID()}
 
 	root, priv := newRootCert(clock.New())
-	cert, raw, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
+	cert, myPriv := issueNewCert(defaultCertTemplate(clock.New()), root, priv)
 
 	s.cert = cert
 
 	chain := CertificateChain{
-		Chain:   [][]byte{raw},
+		Chain:   [][]byte{cert.Raw},
 		PrivKey: myPriv,
 	}
 	s.Require().NoError(chain.load())
@@ -247,7 +247,7 @@ func newRootCert(clock clock.Clock) (*x509.Certificate, crypto.PrivateKey) {
 	return cert, priv
 }
 
-func issueNewCert(template, parent *x509.Certificate, parentKey crypto.PrivateKey) (*x509.Certificate, []byte, crypto.PrivateKey) {
+func issueNewCert(template, parent *x509.Certificate, parentKey crypto.PrivateKey) (*x509.Certificate, crypto.PrivateKey) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)
@@ -264,7 +264,7 @@ func issueNewCert(template, parent *x509.Certificate, parentKey crypto.PrivateKe
 		panic(err)
 	}
 
-	return cert, derBytes, priv
+	return cert, priv
 }
 
 func defaultCertTemplate(clock clock.Clock) *x509.Certificate {
