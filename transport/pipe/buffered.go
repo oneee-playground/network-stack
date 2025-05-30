@@ -163,12 +163,11 @@ func (p *bufferedPipe) closed() bool {
 	return p._closed
 }
 
-// notifyRead's caller already holds lock. So no need to hold it in here.
-func (p *bufferedPipe) notifyRead()  { p.in.Signal() }
-func (p *bufferedPipe) notifyWrite() { p.out.Signal() }
+func (p *bufferedPipe) notifyRead()  { p.in.Broadcast() }
+func (p *bufferedPipe) notifyWrite() { p.out.Broadcast() }
 
-func (p *bufferedPipe) SetReadDeadLine(t time.Time)  { p.rdeadLine.set(t, func() { p.in.Signal() }) }
-func (p *bufferedPipe) SetWriteDeadLine(t time.Time) { p.wdeadLine.set(t, func() { p.out.Signal() }) }
+func (p *bufferedPipe) SetReadDeadLine(t time.Time)  { p.rdeadLine.set(t, p.notifyRead) }
+func (p *bufferedPipe) SetWriteDeadLine(t time.Time) { p.wdeadLine.set(t, p.notifyWrite) }
 
 func newDeadLine(clock clock.Clock) *deadline { return &deadline{clock: clock} }
 
