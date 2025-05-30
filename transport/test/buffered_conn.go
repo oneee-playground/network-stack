@@ -25,6 +25,10 @@ func (s *BufferedConnTestSuite) TestBothWrite() {
 	c2 := s.C2.(transport.BufferedConn)
 	size1, size2 := int(c1.ReadBufSize()), int(c2.ReadBufSize())
 
+	if size1 == 0 || size2 == 0 {
+		s.T().Skip("cannot test it deterministically")
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	defer wg.Wait()
@@ -62,6 +66,10 @@ func (s *BufferedConnTestSuite) TestReadAfterClose() {
 	c1 := s.C1.(transport.BufferedConn)
 	c2 := s.C2.(transport.BufferedConn)
 	size1 := int(c1.ReadBufSize())
+
+	if size1 == 0 {
+		s.T().Skip("cannot test it deterministically")
+	}
 
 	n, err := c2.Write(make([]byte, size1))
 	s.Require().NoError(err)
