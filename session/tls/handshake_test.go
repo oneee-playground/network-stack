@@ -216,3 +216,44 @@ func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificate() {
 
 	_, _ = testHandshake(s.T(), s.clock, clientOpts, serverOpts)
 }
+
+func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificateALPN() {
+	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
+	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
+
+	sigAlgo, _ := signature.AlgorithmFromX509Cert(s.rootCert)
+
+	clientOpts := HandshakeClientOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			SignatureAlgos:     []signature.Algorithm{sigAlgo},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+			CertChains:         nil, // No certificate to offer.
+			SupportedProtocols: []string{"example"},
+		},
+		OfferKeyExchangeMethods: []keyexchange.Group{keGroup},
+		ServerName:              "www.example.com",
+	}
+	serverOpts := HandshakeServerOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			SignatureAlgos:     []signature.Algorithm{sigAlgo},
+			CertChains: []CertificateChain{{
+				Chain:   [][]byte{s.leaf2.Raw},
+				PrivKey: s.leafPriv2,
+			}},
+			TrustedCerts:       nil, // No trusted certs.
+			SupportedProtocols: []string{"example"},
+		},
+		RequireServerName: false,
+	}
+
+	c1, c2 := testHandshake(s.T(), s.clock, clientOpts, serverOpts)
+
+	s.Require().Equal(c1.Protocol(), c2.Protocol())
+	s.Require().Equal("example", c2.Protocol())
+}

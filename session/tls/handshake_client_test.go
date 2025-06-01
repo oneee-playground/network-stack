@@ -65,7 +65,8 @@ func (s *ClientHandshakerTestSuite) SetupTest() {
 				Chain:   [][]byte{cert.Raw},
 				PrivKey: priv,
 			}},
-			TrustedCerts: []*x509.Certificate{s.rootCert},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+			SupportedProtocols: []string{"example"},
 		},
 		PSKOnly:    false,
 		ServerName: "example.com",
@@ -126,6 +127,10 @@ func (s *ClientHandshakerTestSuite) TestMakeClientHello() {
 	s.Require().Len(ch.ExtKeyShares.KeyShares, 1)
 	s.Equal(s.keGroup.ID(), ch.ExtKeyShares.KeyShares[0].Group)
 
+	s.Require().NotNil(ch.ExtALPN)
+	s.Require().Len(ch.ExtALPN.ProtocolNameList, 1)
+	s.Equal(extension.ALPNProtocolName("example"), ch.ExtALPN.ProtocolNameList[0])
+
 	// Pre-Shared Key
 	s.Nil(ch.ExtPreSharedKey)
 	s.Nil(ch.ExtPskMode)
@@ -152,6 +157,7 @@ func (s *ClientHandshakerTestSuite) TestValidateServerHello() {
 		desc             string
 		modifyExampleSH  func(hs *handshake.ServerHello)
 		requestedPSKOnly bool
+		protocols        []string
 		wantErr          bool
 		alert            alert.Description
 	}{
@@ -159,6 +165,28 @@ func (s *ClientHandshakerTestSuite) TestValidateServerHello() {
 			desc:            "example (hello retry)",
 			modifyExampleSH: func(hs *handshake.ServerHello) {},
 			wantErr:         false,
+		},
+		{
+			desc: "example (alpn)",
+			modifyExampleSH: func(hs *handshake.ServerHello) {
+				hs.ExtALPN = &extension.ALPNProtocols{ProtocolNameList: []extension.ALPNProtocolName{
+					extension.ALPNProtocolName("hello"),
+				}}
+			},
+			protocols: []string{"hello"},
+			wantErr:   false,
+		},
+		{
+			desc: "example (alpn, invalid length)",
+			modifyExampleSH: func(hs *handshake.ServerHello) {
+				hs.ExtALPN = &extension.ALPNProtocols{ProtocolNameList: []extension.ALPNProtocolName{
+					extension.ALPNProtocolName("hello"),
+					extension.ALPNProtocolName("abc"),
+				}}
+			},
+			protocols: []string{"hello"},
+			wantErr:   true,
+			alert:     alert.IllegalParameter,
 		},
 		{
 			desc: "example (non hello retry, keyshare)",
@@ -264,6 +292,7 @@ func (s *ClientHandshakerTestSuite) TestValidateServerHello() {
 			tc.modifyExampleSH(&sh)
 
 			s.hs.opts.PSKOnly = tc.requestedPSKOnly
+			s.hs.opts.SupportedProtocols = tc.protocols
 
 			err := s.hs.validateServerHello(exampleCH, &sh)
 			if tc.wantErr {

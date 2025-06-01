@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/x509/pkix"
 	"hash"
@@ -38,6 +39,7 @@ type serverHandshaker struct {
 
 	earlySecret  []byte
 	sharedSecret []byte
+	protocol     string
 }
 
 func newHandshakerServer(conn *Conn, clock clock.Clock, opts HandshakeServerOptions) (*serverHandshaker, error) {
@@ -80,7 +82,7 @@ func (s *serverHandshaker) keyExchange() (err error) {
 			return
 		}
 
-		if err = s.encryptHandshake(); err != nil {
+		if err = s.saveNegotiatedSpec(); err != nil {
 			err = errors.Wrap(err, "encrypting handshake")
 		}
 	}()
@@ -247,6 +249,20 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 
 	sh.ExtSupportedVersions = &extension.SupportedVersionsSH{SelectedVersion: s.session.version}
 
+	if alpn := ch.ExtALPN; len(s.opts.SupportedProtocols) > 0 && alpn != nil {
+		selected, found := s.selectProtocol(alpn.ProtocolNameList)
+		if !found {
+			err := errors.New("no common protocol found")
+			return nil, alert.NewError(err, alert.NoApplicationProtocol)
+		}
+
+		s.protocol = string(selected)
+
+		sh.ExtALPN = &extension.ALPNProtocols{
+			ProtocolNameList: []extension.ALPNProtocolName{selected},
+		}
+	}
+
 	// DHE key exchange extension exists when:
 	// - PSK is not used
 	// - PSK is used and psk mode is psk_dhe_ke
@@ -366,7 +382,27 @@ func (s *serverHandshaker) selectKeyShare(
 	return keyexchange.Group{}, nil, false
 }
 
-func (s *serverHandshaker) encryptHandshake() error {
+func (s *serverHandshaker) selectProtocol(
+	names []extension.ALPNProtocolName,
+) (selected extension.ALPNProtocolName, found bool) {
+	for _, proto := range s.opts.SupportedProtocols {
+		mine := extension.ALPNProtocolName(proto)
+
+		for _, given := range names {
+			if !bytes.Equal(given, mine) {
+				continue
+			}
+
+			return given, true
+		}
+	}
+	return nil, false
+
+}
+
+func (s *serverHandshaker) saveNegotiatedSpec() error {
+	s.conn.protocol = s.protocol
+
 	if err := s.session.setEarlySecret(s.earlySecret); err != nil {
 		return errors.Wrap(err, "setting early secret")
 	}

@@ -162,7 +162,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 		desc       string
 		modifyOpts func(opts *HandshakeServerOptions)
 		ch         *handshake.ClientHello
-		expect     func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte)
+		expect     func(sh *handshake.ServerHello, hs *serverHandshaker)
 		wantErr    bool
 	}{
 		{
@@ -182,7 +182,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
+			expect: func(sh *handshake.ServerHello, hs *serverHandshaker) {
 				// Validate fields.
 				s.Equal(common.VersionTLS12, sh.Version)
 				s.Len(sh.Random, 32)
@@ -197,10 +197,39 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 				// Pre-Shared Key
 				s.Nil(sh.ExtPreSharedKey)
 
-				s.True(usedMostPreffered)
+				s.True(hs.usedMostPreferredKE)
 
-				s.Nil(earlySecret)
-				s.NotNil(sharedSecret)
+				s.Nil(hs.earlySecret)
+				s.NotNil(hs.sharedSecret)
+			},
+		},
+		{
+			desc: "alpn negotiated",
+			modifyOpts: func(opts *HandshakeServerOptions) {
+				opts.SupportedProtocols = []string{"example"}
+			},
+			ch: &handshake.ClientHello{
+				ExtSupportedGroups: &extension.SupportedGroups{
+					NamedGroupList: []keyexchange.GroupID{s.keGroup.ID()},
+				},
+				ExtKeyShares: &extension.KeyShareCH{
+					KeyShares: []extension.KeyShareEntry{
+						{
+							Group:       s.keGroup.ID(),
+							KeyExchange: remotePub1,
+						},
+					},
+				},
+				ExtALPN: &extension.ALPNProtocols{
+					ProtocolNameList: []extension.ALPNProtocolName{
+						extension.ALPNProtocolName("example"),
+					},
+				},
+			},
+			expect: func(sh *handshake.ServerHello, hs *serverHandshaker) {
+				// Skip validating fields.
+
+				s.Equal("example", hs.protocol)
 			},
 		},
 		{
@@ -221,17 +250,17 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
+			expect: func(sh *handshake.ServerHello, hs *serverHandshaker) {
 				// Skip validating fields.
 
 				// Key Share
 				s.Require().NotNil(sh.ExtKeyShareSH)
 				s.Equal(p512.ID(), sh.ExtKeyShareSH.KeyShare.Group)
 
-				s.False(usedMostPreffered)
+				s.False(hs.usedMostPreferredKE)
 
-				s.Nil(earlySecret)
-				s.NotNil(sharedSecret)
+				s.Nil(hs.earlySecret)
+				s.NotNil(hs.sharedSecret)
 			},
 		},
 		{
@@ -252,7 +281,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect: func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {
+			expect: func(sh *handshake.ServerHello, hs *serverHandshaker) {
 				// Skip validating fields.
 				s.True(sh.IsHelloRetry())
 				s.NotNil(sh.ExtCookie)
@@ -261,10 +290,10 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 				s.Require().NotNil(sh.ExtKeyShareHRR)
 				s.Equal(s.keGroup.ID(), sh.ExtKeyShareHRR.SelectedGroup)
 
-				s.False(usedMostPreffered)
+				s.False(hs.usedMostPreferredKE)
 
-				s.Nil(earlySecret)
-				s.Nil(sharedSecret)
+				s.Nil(hs.earlySecret)
+				s.Nil(hs.sharedSecret)
 			},
 			wantErr: true,
 		},
@@ -276,7 +305,33 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					NamedGroupList: []keyexchange.GroupID{},
 				},
 			},
-			expect:  func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {},
+			expect:  func(sh *handshake.ServerHello, hs *serverHandshaker) {},
+			wantErr: true,
+		},
+		{
+			desc: "no common protocol",
+			modifyOpts: func(opts *HandshakeServerOptions) {
+				opts.SupportedProtocols = []string{"example1"}
+			},
+			ch: &handshake.ClientHello{
+				ExtSupportedGroups: &extension.SupportedGroups{
+					NamedGroupList: []keyexchange.GroupID{s.keGroup.ID()},
+				},
+				ExtKeyShares: &extension.KeyShareCH{
+					KeyShares: []extension.KeyShareEntry{
+						{
+							Group:       s.keGroup.ID(),
+							KeyExchange: remotePub1,
+						},
+					},
+				},
+				ExtALPN: &extension.ALPNProtocols{
+					ProtocolNameList: []extension.ALPNProtocolName{
+						extension.ALPNProtocolName("example2"),
+					},
+				},
+			},
+			expect:  func(sh *handshake.ServerHello, hs *serverHandshaker) {},
 			wantErr: true,
 		},
 		{
@@ -296,7 +351,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 					},
 				},
 			},
-			expect:  func(sh *handshake.ServerHello, usedMostPreffered bool, earlySecret, sharedSecret []byte) {},
+			expect:  func(sh *handshake.ServerHello, hs *serverHandshaker) {},
 			wantErr: true,
 		},
 	}
@@ -316,7 +371,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 
 			sh, err := s.hs.makeServerHello(tc.ch)
 
-			defer tc.expect(sh, s.hs.usedMostPreferredKE, s.hs.earlySecret, s.hs.sharedSecret)
+			defer tc.expect(sh, s.hs)
 
 			if !tc.wantErr {
 				s.NoError(err)

@@ -36,6 +36,8 @@ type ClientHello struct {
 	ExtPskMode      *extension.PskKeyExchangeModes
 	ExtEarlyData    *extension.EarlyDataCH
 	ExtPreSharedKey *extension.PreSharedKeyCH
+	// ALPN
+	ExtALPN *extension.ALPNProtocols
 }
 
 var _ Handshake = (*ClientHello)(nil)
@@ -65,6 +67,7 @@ func (c *ClientHello) data() []byte {
 		c.ExtCookie,
 		c.ExtPskMode,
 		c.ExtPreSharedKey,
+		c.ExtALPN,
 	)
 	extension.WriteRaws(raws, buf)
 
@@ -91,6 +94,7 @@ func (c *ClientHello) length() types.Uint24 {
 		c.ExtCookie,
 		c.ExtPskMode,
 		c.ExtPreSharedKey,
+		c.ExtALPN,
 	))
 
 	return types.NewUint24(dLen)
@@ -161,6 +165,9 @@ func (c *ClientHello) fillFrom(b []byte) (err error) {
 	if c.ExtPreSharedKey, err = extension.Extract(raws, c.ExtPreSharedKey); err != nil {
 		return errors.Wrap(err, "pre-shared key")
 	}
+	if c.ExtALPN, err = extension.Extract(raws, c.ExtALPN); err != nil {
+		return errors.Wrap(err, "application layer protocol negotiation")
+	}
 
 	return nil
 }
@@ -202,6 +209,9 @@ func (c *ClientHello) RetryValid(retried *ClientHello, cookie []byte) (foundCook
 	if !extension.Equal(c.ExtPskMode, retried.ExtPskMode) {
 		return false, errors.New("psk mode don't match")
 	}
+	if !extension.Equal(c.ExtALPN, retried.ExtALPN) {
+		return false, errors.New("alpn don't match")
+	}
 
 	if retried.ExtEarlyData != nil {
 		return false, errors.New("early data is prohibited")
@@ -236,6 +246,9 @@ type ServerHello struct {
 	// Extensions for HRR.
 	ExtKeyShareHRR *extension.KeyShareHRR
 	ExtCookie      *extension.Cookie
+
+	// ALPN
+	ExtALPN *extension.ALPNProtocols
 }
 
 var DowngradeTLS12 = [8]byte{0x44, 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 01}
@@ -263,6 +276,7 @@ func (s *ServerHello) data() []byte {
 		s.ExtKeyShareSH,
 		s.ExtPreSharedKey,
 		s.ExtKeyShareHRR,
+		s.ExtALPN,
 		s.ExtCookie,
 	)
 	extension.WriteRaws(raws, buf)
@@ -284,6 +298,7 @@ func (s *ServerHello) length() types.Uint24 {
 		s.ExtPreSharedKey,
 		s.ExtKeyShareHRR,
 		s.ExtCookie,
+		s.ExtALPN,
 	))
 
 	return types.NewUint24(dLen)
@@ -328,6 +343,9 @@ func (s *ServerHello) fillFrom(b []byte) (err error) {
 
 	if s.ExtSupportedVersions, err = extension.Extract(raws, s.ExtSupportedVersions); err != nil {
 		return errors.Wrap(err, "supported versions")
+	}
+	if s.ExtALPN, err = extension.Extract(raws, s.ExtALPN); err != nil {
+		return errors.Wrap(err, "alpn")
 	}
 
 	if !s.IsHelloRetry() {

@@ -42,6 +42,8 @@ type Conn struct {
 	dataBuf bytes.Reader // For reading decrypted data.
 
 	lastHandshake []byte
+
+	protocol string
 }
 
 var _ transport.BufferedConn = (*Conn)(nil)
@@ -52,6 +54,11 @@ func (conn *Conn) LocalAddr() transport.Addr    { return conn.underlying.LocalAd
 func (conn *Conn) RemoteAddr() transport.Addr   { return conn.underlying.RemoteAddr() }
 func (conn *Conn) SetReadDeadLine(t time.Time)  { conn.underlying.SetReadDeadLine(t) }
 func (conn *Conn) SetWriteDeadLine(t time.Time) { conn.underlying.SetWriteDeadLine(t) }
+
+// Empty means no negotiated protocol.
+func (conn *Conn) Protocol() string {
+	return conn.protocol
+}
 
 // Close closes the connection itself and its underlying transport layer connection.
 func (conn *Conn) Close() error {

@@ -27,6 +27,9 @@ type HandshakeOptions struct {
 
 	KeyExchangeMethods []keyexchange.Group
 
+	// Used for ALPN.
+	SupportedProtocols []string
+
 	Random io.Reader
 }
 

@@ -212,6 +212,14 @@ func (c *clientHandshaker) makeClientHello() (*handshake.ClientHello, error) {
 		}
 	}
 
+	if len(c.opts.SupportedProtocols) > 0 {
+		protocols := sliceutil.Map(c.opts.SupportedProtocols, func(s string) extension.ALPNProtocolName {
+			return []byte(s)
+		})
+
+		ch.ExtALPN = &extension.ALPNProtocols{ProtocolNameList: protocols}
+	}
+
 	// Key exchange method to use.
 	offered := c.opts.OfferKeyExchangeMethods
 	c.keyCandidates, err = newKeyShareCandidates(offered, c.opts.Random)
@@ -447,6 +455,14 @@ func (c *clientHandshaker) validateServerHello(replyTo *handshake.ClientHello, g
 		}
 	}
 
+	if len(c.opts.SupportedProtocols) > 0 && got.ExtALPN != nil {
+		// Reference: https://datatracker.ietf.org/doc/html/rfc7301#section-3.1
+		if len(got.ExtALPN.ProtocolNameList) != 1 {
+			err := errors.New("alpn from server hello must only contain one name")
+			return alert.NewError(err, alert.IllegalParameter)
+		}
+	}
+
 	return nil
 }
 
@@ -648,6 +664,11 @@ func (c *clientHandshaker) checkKeyExchangeSpec(serverHello *handshake.ServerHel
 }
 
 func (c *clientHandshaker) saveNegotiatedSpec(serverHello *handshake.ServerHello) (err error) {
+	if alpn := serverHello.ExtALPN; len(c.opts.SupportedProtocols) > 0 && alpn != nil {
+		selected := string(alpn.ProtocolNameList[0])
+		c.conn.protocol = selected
+	}
+
 	var earlySecret []byte
 	if psk := serverHello.ExtPreSharedKey; psk != nil {
 		psk := serverHello.ExtPreSharedKey
