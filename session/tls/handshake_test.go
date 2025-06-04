@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
 	"network-stack/session/tls/common/signature"
@@ -42,14 +43,15 @@ func testHandshake(t *testing.T, clock clock.Clock, clientOpts HandshakeClientOp
 	timeout := time.Second
 
 	c1 := &Conn{
-		underlying:   b1,
-		clock:        clock,
-		closeTimeout: timeout,
-		isServer:     false,
-		handshaking:  true,
-		maxChunkSize: maxRecordLen,
-		in:           newProtector(),
-		out:          newProtector(),
+		underlying:         b1,
+		clock:              clock,
+		closeTimeout:       timeout,
+		isServer:           false,
+		handshaking:        true,
+		maxChunkSize:       maxRecordLen,
+		in:                 newProtector(),
+		out:                newProtector(),
+		onNewSessionTicket: clientOpts.OnNewSessionTicket,
 	}
 	c2 := &Conn{
 		underlying:   b2,
@@ -104,6 +106,17 @@ func (s *HandshakeTestSuite) SetupTest() {
 }
 
 func (s *HandshakeTestSuite) Test1RTTWithCertificate() {
+	// 1. -> CH
+	// 2. <- SH
+	// 3. <- EE
+	// 4. <- CR
+	// 5. <- Cert
+	// 6. <- CertVerify
+	// 7. <- Finished
+	// 8. -> Cert
+	// 9. -> CertVerify
+	// 10.-> Finished
+
 	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
 	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
 
@@ -143,6 +156,19 @@ func (s *HandshakeTestSuite) Test1RTTWithCertificate() {
 }
 
 func (s *HandshakeTestSuite) Test2RTTHelloRetryWithCertificate() {
+	// 1. -> CH
+	// 2. <- HRR
+	// 3. -> CH
+	// 4. <- SH
+	// 5. <- EE
+	// 6. <- CR
+	// 7. <- Cert
+	// 8. <- CertVerify
+	// 9. <- Finished
+	// 10.-> Cert
+	// 11.-> CertVerify
+	// 12.-> Finished
+
 	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
 	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
 
@@ -182,6 +208,14 @@ func (s *HandshakeTestSuite) Test2RTTHelloRetryWithCertificate() {
 }
 
 func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificate() {
+	// 1. -> CH
+	// 2. <- SH
+	// 3. <- EE
+	// 4. <- Cert
+	// 5. <- CertVerify
+	// 6. <- Finished
+	// 7. -> Finished
+
 	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
 	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
 
@@ -218,6 +252,14 @@ func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificate() {
 }
 
 func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificateALPN() {
+	// 1. -> CH (alpn)
+	// 2. <- SH (alpn)
+	// 3. <- EE
+	// 4. <- Cert
+	// 5. <- CertVerify
+	// 6. <- Finished
+	// 7. -> Finished
+
 	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
 	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
 
@@ -256,4 +298,136 @@ func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificateALPN() {
 
 	s.Require().Equal(c1.Protocol(), c2.Protocol())
 	s.Require().Equal("example", c2.Protocol())
+}
+
+func (s *HandshakeTestSuite) Test1RTTWithPSK() {
+	// 1. -> CH (psk, key_share)
+	// 2. <- SH (accept)
+	// 3. <- EE
+	// 4. <- Finished
+	// 5. -> Finished
+
+	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
+	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
+
+	ticket := Ticket{
+		Type:           PSKTypeResumption,
+		Ticket:         []byte("ticket"),
+		Key:            []byte("the psk"),
+		LifeTime:       0, // don't care here
+		AgeAdd:         0, // don't care here
+		Nonce:          []byte("the nonce"),
+		EarlyDataLimit: 0,
+		Version:        common.VersionTLS12,
+		CipherSuite:    suite,
+		ServerName:     "www.example.com",
+	}
+
+	var clientKeyUsed <-chan uint
+	var serverKeyUsed <-chan struct{}
+
+	clientOpts := HandshakeClientOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+		},
+		OfferKeyExchangeMethods: []keyexchange.Group{keGroup},
+		ServerName:              "www.example.com",
+		PSKOnly:                 false,
+		GetPreSharedKeys: func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+			clientKeyUsed = keyUsed
+			return []PreSharedKey{TicketToPSK(ticket, 0)}, nil
+		},
+	}
+	serverOpts := HandshakeServerOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+		},
+		RequireServerName: false,
+		GetTicketsFromPSKs: func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, _ Ticket, err error) {
+			serverKeyUsed = keyUsed
+			return 0, ticket, nil
+		},
+	}
+
+	_, _ = testHandshake(s.T(), s.clock, clientOpts, serverOpts)
+
+	idx, used := <-clientKeyUsed
+	s.True(used)
+	s.Equal(uint(0), idx)
+
+	_, used = <-serverKeyUsed
+	s.True(used)
+}
+
+func (s *HandshakeTestSuite) Test2RTTWithPSKHelloRetry() {
+	// 1. -> CH (psk, key_share)
+	// 2. <- HRR
+	// 3. -> CH (psk, key_share)
+	// 4. <- SH (accept)
+	// 5. <- EE
+	// 6. <- Finished
+	// 7. -> Finished
+
+	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
+	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
+
+	ticket := Ticket{
+		Type:           PSKTypeResumption,
+		Ticket:         []byte("ticket"),
+		Key:            []byte("the psk"),
+		LifeTime:       0, // don't care here
+		AgeAdd:         0, // don't care here
+		Nonce:          []byte("the nonce"),
+		EarlyDataLimit: 0,
+		Version:        common.VersionTLS12,
+		CipherSuite:    suite,
+		ServerName:     "www.example.com",
+	}
+
+	var clientKeyUsed <-chan uint
+	var serverKeyUsed <-chan struct{}
+
+	clientOpts := HandshakeClientOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+		},
+		OfferKeyExchangeMethods: []keyexchange.Group{}, // This will result in HRR.
+		ServerName:              "www.example.com",
+		PSKOnly:                 false,
+		GetPreSharedKeys: func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+			clientKeyUsed = keyUsed
+			return []PreSharedKey{TicketToPSK(ticket, 0)}, nil
+		},
+	}
+	serverOpts := HandshakeServerOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+		},
+		RequireServerName: false,
+		GetTicketsFromPSKs: func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, _ Ticket, err error) {
+			serverKeyUsed = keyUsed
+			return 0, ticket, nil
+		},
+	}
+
+	_, _ = testHandshake(s.T(), s.clock, clientOpts, serverOpts)
+
+	idx, used := <-clientKeyUsed
+	s.True(used)
+	s.Equal(uint(0), idx)
+
+	_, used = <-serverKeyUsed
+	s.True(used)
 }

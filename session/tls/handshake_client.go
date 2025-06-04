@@ -12,7 +12,6 @@ import (
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
@@ -24,10 +23,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-type keyExchange struct {
+type keyCandidate struct {
 	method  keyexchange.KeyExchange
 	privKey []byte
 	pubKey  []byte
+}
+
+type pskCandidate struct {
+	ticket      []byte // Not used. Do we need it?
+	secret      []byte
+	cipherSuite ciphersuite.Suite
 }
 
 // State Machine: datatracker.ietf.org/doc/html/rfc8446#appendix-A.1
@@ -41,9 +46,10 @@ type clientHandshaker struct {
 	certStore certStore
 
 	// Used for making shared secret.
-	keyCandidates map[keyexchange.GroupID]keyExchange
+	keyCandidates map[keyexchange.GroupID]keyCandidate
 	// includes candidates of psk.
-	pskCandidates [][]byte
+	pskCandidates []pskCandidate
+	notifyPSKUsed chan uint
 
 	// Encrypted extensions.
 	clientCert bool
@@ -129,7 +135,7 @@ func (c *clientHandshaker) keyExchange() (err error) {
 
 	// On HRR, we use message_hash instead of initial client hello.
 	// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.1
-	messageHash := handshake.MakeMessageHash(c.session.cipherSuite, initialCH)
+	messageHash := handshake.MakeMessageHash(c.session.CipherSuite, initialCH)
 	c.session.transcript.Reset()
 	c.session.transcript.Write(handshake.ToBytes(messageHash))
 	c.session.transcript.Write(handshake.ToBytes(serverHello))
@@ -195,9 +201,11 @@ func (c *clientHandshaker) makeClientHello() (*handshake.ClientHello, error) {
 			SupportedAlgos: c.certStore.signatureAlgosCert,
 		}
 		ch.ExtCertAuthorities = &extension.CertAuthorities{
-			Authorities: sliceutil.Map(c.certStore.certAuthorities, func(ca []byte) extension.DistinguishedName {
-				return ca
-			}),
+			Authorities: sliceutil.Map(c.certStore.certAuthorities,
+				func(ca []byte) extension.DistinguishedName {
+					return ca
+				},
+			),
 		}
 	}
 
@@ -213,9 +221,11 @@ func (c *clientHandshaker) makeClientHello() (*handshake.ClientHello, error) {
 	}
 
 	if len(c.opts.SupportedProtocols) > 0 {
-		protocols := sliceutil.Map(c.opts.SupportedProtocols, func(s string) extension.ALPNProtocolName {
-			return []byte(s)
-		})
+		protocols := sliceutil.Map(c.opts.SupportedProtocols,
+			func(s string) extension.ALPNProtocolName {
+				return []byte(s)
+			},
+		)
 
 		ch.ExtALPN = &extension.ALPNProtocols{ProtocolNameList: protocols}
 	}
@@ -229,25 +239,30 @@ func (c *clientHandshaker) makeClientHello() (*handshake.ClientHello, error) {
 	ch.ExtKeyShares = &extension.KeyShareCH{KeyShares: keyshareEntries(offered, c.keyCandidates)}
 
 	// Make pre-shared key.
-	if len(c.opts.PreSharedKeys) > 0 {
-		c.pskCandidates, err = injectPSKExtensions(ch, c.opts.PreSharedKeys, c.opts.PSKOnly)
+	if c.opts.GetPreSharedKeys != nil {
+		c.notifyPSKUsed = make(chan uint, 1)
+		keys, err := c.opts.GetPreSharedKeys(c.opts.CipherSuites, c.certStore.serverName, c.notifyPSKUsed)
+		if err != nil {
+			return nil, errors.Wrap(err, "getting pre-shared keys")
+		}
+
+		c.pskCandidates, err = injectPSKExtensions(ch, keys, c.opts.PSKOnly)
 		if err != nil {
 			return nil, errors.Wrap(err, "injecting psk extensions to client hello")
 		}
 	}
-
 	return ch, nil
 }
 
-func newKeyShareCandidates(methods []keyexchange.Group, random io.Reader) (map[keyexchange.GroupID]keyExchange, error) {
-	candidates := make(map[keyexchange.GroupID]keyExchange, len(methods))
+func newKeyShareCandidates(methods []keyexchange.Group, random io.Reader) (map[keyexchange.GroupID]keyCandidate, error) {
+	candidates := make(map[keyexchange.GroupID]keyCandidate, len(methods))
 	for _, method := range methods {
 		privKey, pubKey, err := method.KeyExchange().GenKeyPair(random)
 		if err != nil {
 			return nil, errors.Wrap(err, "generating keypair for key exchange")
 		}
 
-		candidates[method.ID()] = keyExchange{
+		candidates[method.ID()] = keyCandidate{
 			method:  method.KeyExchange(),
 			privKey: privKey,
 			pubKey:  pubKey,
@@ -256,7 +271,7 @@ func newKeyShareCandidates(methods []keyexchange.Group, random io.Reader) (map[k
 	return candidates, nil
 }
 
-func keyshareEntries(methods []keyexchange.Group, candidates map[keyexchange.GroupID]keyExchange) []extension.KeyShareEntry {
+func keyshareEntries(methods []keyexchange.Group, candidates map[keyexchange.GroupID]keyCandidate) []extension.KeyShareEntry {
 	return sliceutil.Map(methods, func(group keyexchange.Group) extension.KeyShareEntry {
 		return extension.KeyShareEntry{
 			Group:       group.ID(),
@@ -265,17 +280,17 @@ func keyshareEntries(methods []keyexchange.Group, candidates map[keyexchange.Gro
 	})
 }
 
-func injectPSKExtensions(ch *handshake.ClientHello, keys []session.PreSharedKey, pskOnly bool) (candidates [][]byte, err error) {
+func injectPSKExtensions(ch *handshake.ClientHello, keys []PreSharedKey, pskOnly bool) (candidates []pskCandidate, err error) {
 	// PSK key exchange mode.
-	var mode session.PSKMode
+	var mode extension.PSKMode
 	if pskOnly {
-		mode = session.PSKModePSK_KE
+		mode = extension.PSKModePSK_KE
 	} else {
-		mode = session.PSKModePSK_DHE_KE
+		mode = extension.PSKModePSK_DHE_KE
 	}
-	ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []session.PSKMode{mode}}
+	ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []extension.PSKMode{mode}}
 
-	pskCH := makePSKEmptyBinders(keys)
+	pskCH := makePSKExtensionEmptyBinders(keys)
 	ch.ExtPreSharedKey = &pskCH
 
 	rawCH := handshake.ToBytes(ch)
@@ -296,7 +311,7 @@ func injectPSKExtensions(ch *handshake.ClientHello, keys []session.PreSharedKey,
 	return candidates, nil
 }
 
-func makePSKEmptyBinders(keys []session.PreSharedKey) (psk extension.PreSharedKeyCH) {
+func makePSKExtensionEmptyBinders(keys []PreSharedKey) (psk extension.PreSharedKeyCH) {
 	zeros := make(map[int][]byte, 0)
 
 	for _, key := range keys {
@@ -308,7 +323,7 @@ func makePSKEmptyBinders(keys []session.PreSharedKey) (psk extension.PreSharedKe
 		psk.Binders = append(psk.Binders, zeros[size])
 		psk.Identities = append(psk.Identities, extension.PSKIdentity{
 			Identity:            key.Identity,
-			ObfuscatedTicketAge: key.ObfuscatedTicketAge,
+			ObfuscatedTicketAge: uint32(key.ObfuscatedAge.Milliseconds()),
 		})
 	}
 
@@ -316,10 +331,10 @@ func makePSKEmptyBinders(keys []session.PreSharedKey) (psk extension.PreSharedKe
 }
 
 func makePSKCandidates(
-	keys []session.PreSharedKey,
+	keys []PreSharedKey,
 	deriveTranscript func(hash crypto.Hash) []byte,
-) (candidates, binders [][]byte, err error) {
-	candidates = make([][]byte, len(keys))
+) (candidates []pskCandidate, binders [][]byte, err error) {
+	candidates = make([]pskCandidate, len(keys))
 	binders = make([][]byte, len(keys))
 
 	for idx, key := range keys {
@@ -340,20 +355,26 @@ func makePSKCandidates(
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.11.2
-func newPSKCandidate(key session.PreSharedKey, transcript []byte) (candidate, binder []byte, err error) {
+func newPSKCandidate(key PreSharedKey, transcript []byte) (candidate pskCandidate, binder []byte, err error) {
 	suite := key.CipherSuite
 
-	earlysecret, err := hkdf.Extract(suite, key.Identity, nil)
+	earlySecret, err := hkdf.Extract(suite, key.Key, nil)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "extracting early_secret")
+		return pskCandidate{}, nil, errors.Wrap(err, "extracting early_secret")
 	}
 
-	binderEntry, err := computePSKBinderEntry(suite, key.Type, earlysecret, transcript)
+	binderEntry, err := computePSKBinderEntry(suite, key.Type, earlySecret, transcript)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "computing binder entry")
+		return pskCandidate{}, nil, errors.Wrap(err, "computing binder entry")
 	}
 
-	return earlysecret, binderEntry, nil
+	candidate = pskCandidate{
+		ticket:      key.Identity,
+		secret:      earlySecret,
+		cipherSuite: key.CipherSuite,
+	}
+
+	return candidate, binderEntry, nil
 }
 
 func (c *clientHandshaker) sendClientHello() (ch *handshake.ClientHello, err error) {
@@ -377,10 +398,10 @@ func (c *clientHandshaker) startEarlyData() error {
 
 	// If pre-shared keys exist, use first one as an input.
 	// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.10
-	earlySecret := c.pskCandidates[0]
-	cipherSuite := c.opts.PreSharedKeys[0].CipherSuite
+	candidate := c.pskCandidates[0]
+	cipherSuite := candidate.cipherSuite
 
-	if err := earlyData.p.setKey(earlySecret, cipherSuite); err != nil {
+	if err := earlyData.p.setKey(candidate.secret, cipherSuite); err != nil {
 		return errors.Wrap(err, "setting key for early data")
 	}
 
@@ -582,42 +603,36 @@ func (c *clientHandshaker) remakeCH(
 	// If psk exists in initial hello, re-compute the obfuscated_ticket_age
 	// and binder values. Also remove the psks that don't match negotiated cipher suite.
 	// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2
-	if len(c.opts.PreSharedKeys) > 0 {
+	if c.opts.GetPreSharedKeys != nil {
+		close(c.notifyPSKUsed)
+		c.notifyPSKUsed = nil
+
+		suite := c.session.CipherSuite
+		c.pskCandidates = nil
 		newHello.ExtPreSharedKey = nil
 
-		suite := c.session.cipherSuite
+		c.notifyPSKUsed = make(chan uint, 1)
+		keys, err := c.opts.GetPreSharedKeys([]ciphersuite.Suite{suite}, c.certStore.serverName, c.notifyPSKUsed)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "getting pre-shared keys")
+		}
 
-		// Filter usable psks.
-		newPSKs := make([]session.PreSharedKey, 0)
-		for _, key := range c.opts.PreSharedKeys {
-			// compare with negotiated hash spec.
-			if key.CipherSuite.Hash() != suite.Hash() {
-				continue
+		if len(keys) > 0 {
+			pskCH := makePSKExtensionEmptyBinders(keys)
+			newHello.ExtPreSharedKey = &pskCH
+
+			transcriptHash := misc.CopyHash(c.session.transcript)
+			transcriptHash.Write(handshake.ToBytes(&newHello))
+			transcript := transcriptHash.Sum(nil)
+
+			candidates, binders, err := makePSKCandidates(keys, func(hash crypto.Hash) []byte { return transcript })
+			if err != nil {
+				return nil, false, errors.Wrap(err, "remaking psk candidates")
 			}
 
-			// TODO: check ticket age.
-
-			newPSKs = append(newPSKs, key)
+			c.pskCandidates = candidates
+			pskCH.Binders = sliceutil.Map(binders, func(b []byte) extension.PSKBinderEntry { return b })
 		}
-
-		pskCH := makePSKEmptyBinders(newPSKs)
-		newHello.ExtPreSharedKey = &pskCH
-
-		transcriptHash := misc.CopyHash(c.session.transcript)
-		transcriptHash.Write(handshake.ToBytes(&newHello))
-		transcript := transcriptHash.Sum(nil)
-
-		candidates, binders, err := makePSKCandidates(newPSKs, func(hash crypto.Hash) []byte { return transcript })
-		if err != nil {
-			return nil, false, errors.Wrap(err, "remaking psk candidates")
-		}
-
-		c.pskCandidates = candidates
-		pskCH.Binders = sliceutil.Map(binders,
-			func(b []byte) extension.PSKBinderEntry {
-				return b
-			},
-		)
 
 		changed = true
 	}
@@ -627,7 +642,7 @@ func (c *clientHandshaker) remakeCH(
 
 func (c *clientHandshaker) saveKeyExchangeSpec(serverHello *handshake.ServerHello) error {
 	// We don't need to check error since it is already checked.
-	c.session.version, _ = determineSelectedVersion(serverHello)
+	c.session.Version, _ = determineSelectedVersion(serverHello)
 
 	// Determine cipher suite.
 	idx := slices.IndexFunc(c.opts.CipherSuites, func(suite ciphersuite.Suite) bool {
@@ -640,7 +655,7 @@ func (c *clientHandshaker) saveKeyExchangeSpec(serverHello *handshake.ServerHell
 
 	suite := c.opts.CipherSuites[idx]
 
-	c.session.cipherSuite = suite
+	c.session.CipherSuite = suite
 	c.session.transcript = suite.Hash().New()
 
 	return nil
@@ -650,12 +665,12 @@ func (c *clientHandshaker) saveKeyExchangeSpec(serverHello *handshake.ServerHell
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.4
 func (c *clientHandshaker) checkKeyExchangeSpec(serverHello *handshake.ServerHello) error {
 	ver, _ := determineSelectedVersion(serverHello)
-	if c.session.version != ver {
+	if c.session.Version != ver {
 		err := errors.New("version changed after HRR")
 		return alert.NewError(err, alert.IllegalParameter)
 	}
 
-	if c.session.cipherSuite.ID() != serverHello.CipherSuite {
+	if c.session.CipherSuite.ID() != serverHello.CipherSuite {
 		err := errors.New("cipher suite doesn't match the one offered in HRR")
 		return alert.NewError(err, alert.IllegalParameter)
 	}
@@ -670,16 +685,23 @@ func (c *clientHandshaker) saveNegotiatedSpec(serverHello *handshake.ServerHello
 	}
 
 	var earlySecret []byte
-	if psk := serverHello.ExtPreSharedKey; psk != nil {
-		psk := serverHello.ExtPreSharedKey
-
+	if psk := serverHello.ExtPreSharedKey; psk == nil {
+		if len(c.pskCandidates) > 0 {
+			close(c.notifyPSKUsed)
+			c.notifyPSKUsed = nil
+		}
+	} else {
 		idx := int(psk.SelectedIdentity)
 		if idx >= len(c.pskCandidates) {
 			return alert.NewError(errors.New("psk index out of range"), alert.IllegalParameter)
 		}
 
-		// Early secret.
-		earlySecret = c.pskCandidates[idx]
+		candidate := c.pskCandidates[idx]
+
+		earlySecret = candidate.secret
+		c.notifyPSKUsed <- uint(idx)
+
+		c.session.resumed = true
 	}
 	if err := c.session.setEarlySecret(earlySecret); err != nil {
 		return errors.Wrap(err, "setting early secret")

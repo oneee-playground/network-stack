@@ -35,20 +35,23 @@ type ClientOptions struct {
 
 func NewClient(conn transport.BufferedConn, clock clock.Clock, opts ClientOptions) (*Conn, error) {
 	tlsConn := &Conn{
-		underlying:   conn,
-		clock:        clock,
-		closeTimeout: opts.Record.CloseTimeout,
-		isServer:     false,
-		handshaking:  true,
-		maxChunkSize: maxRecordLen,
-		in:           newProtector(),
-		out:          newProtector(),
+		underlying:         conn,
+		clock:              clock,
+		closeTimeout:       opts.Record.CloseTimeout,
+		isServer:           false,
+		handshaking:        true,
+		maxChunkSize:       maxRecordLen,
+		in:                 newProtector(),
+		out:                newProtector(),
+		onNewSessionTicket: opts.Handshake.OnNewSessionTicket,
 	}
 
 	hs, err := newHandshakerClient(tlsConn, clock, opts.Handshake)
 	if err != nil {
 		return nil, errors.Wrap(err, "making handshaker")
 	}
+
+	tlsConn.session = hs.session
 
 	if err := doHandshake(tlsConn, hs); err != nil {
 		return nil, errors.Wrap(err, "handshake failed")
@@ -65,6 +68,7 @@ type ServerOptions struct {
 func NewServer(conn transport.BufferedConn, clock clock.Clock, opts ServerOptions) (*Conn, error) {
 	tlsConn := &Conn{
 		underlying:   conn,
+		clock:        clock,
 		isServer:     true,
 		handshaking:  true,
 		maxChunkSize: maxRecordLen,
@@ -76,6 +80,8 @@ func NewServer(conn transport.BufferedConn, clock clock.Clock, opts ServerOption
 	if err != nil {
 		return nil, errors.Wrap(err, "making handshaker")
 	}
+
+	tlsConn.session = hs.session
 
 	if err := doHandshake(tlsConn, hs); err != nil {
 		return nil, errors.Wrap(err, "handshake failed")

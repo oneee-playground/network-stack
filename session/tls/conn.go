@@ -12,6 +12,7 @@ import (
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
+	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util/hkdf"
 	"network-stack/transport"
 	"sync"
@@ -26,6 +27,10 @@ var ErrSessionClosed = errors.Wrap(transport.ErrConnClosed, "tls session is clos
 type Conn struct {
 	underlying transport.BufferedConn
 	clock      clock.Clock
+
+	session *Session
+
+	onNewSessionTicket func(ticket Ticket) error
 
 	maxChunkSize uint
 	isServer     bool
@@ -59,6 +64,8 @@ func (conn *Conn) SetWriteDeadLine(t time.Time) { conn.underlying.SetWriteDeadLi
 func (conn *Conn) Protocol() string {
 	return conn.protocol
 }
+
+func (conn *Conn) Session() Session { return *conn.session }
 
 // Close closes the connection itself and its underlying transport layer connection.
 func (conn *Conn) Close() error {
@@ -165,31 +172,53 @@ func (conn *Conn) readRecordMaybeKeyUpdate(wantType contentType, decrypt, keyUpd
 	}
 
 	if record.contentType != wantType {
-		// We close read side of connection on alert.
-		if a, ok := maybeAlert(record); ok {
-			conn.mu.Lock()
-			conn.alertReceived = true
-			conn.mu.Unlock()
-
-			if a.Description != alert.CloseNotify {
-				// We received an error alert.
-				return tlsText{}, errors.Wrapf(ErrSessionClosed, "remote sent an error alert: %s", a.Description)
-			}
-
-			return tlsText{}, ErrSessionClosed
-		}
-		if !conn.handshaking && keyUpdate && record.contentType == typeHandshake {
-			if err := conn.handleKeyUpdate(record.fragment); err != nil {
-				return tlsText{}, errors.Wrap(err, "handling key update")
-			}
-			// Retry read.
-			return conn.readRecordMaybeKeyUpdate(wantType, decrypt, false)
+		handled, err := conn.handleUnexpectedContentType(record, keyUpdate)
+		if err != nil {
+			return tlsText{}, errors.Wrap(err, "handling unexpected content type")
 		}
 
-		return record, errors.Errorf("unexpected content type: %d", record.contentType)
+		if !handled {
+			return record, errors.Errorf("unexpected content type: %d", record.contentType)
+		}
+
+		return conn.readRecordMaybeKeyUpdate(wantType, decrypt, false)
 	}
 
 	return record, nil
+}
+
+// handleUnexpectedContentType assumes conn.in is locked.
+func (conn *Conn) handleUnexpectedContentType(record tlsText, keyUpdate bool) (handled bool, err error) {
+	switch record.contentType {
+	case typeAlert:
+		valid, err := conn.handleAlert(record.fragment)
+		if !valid {
+			return false, alert.NewError(err, alert.DecodeError)
+		}
+
+		// Alert will always result in error.
+		return true, err
+	case typeHandshake:
+		if conn.handshaking {
+			break
+		}
+
+		if match, err := conn.handleNewSessionTicket(record.fragment); err != nil {
+			return false, errors.Wrap(err, "handling new session ticket")
+		} else if match {
+			return true, nil
+		}
+
+		if keyUpdate {
+			if match, err := conn.handleKeyUpdate(record.fragment); err != nil {
+				return false, errors.Wrap(err, "handling key update")
+			} else if match {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func (conn *Conn) actuallyReadRecord() (record tlsText, err error) {
@@ -213,55 +242,134 @@ func (conn *Conn) actuallyReadRecord() (record tlsText, err error) {
 	return record, nil
 }
 
-func maybeAlert(record tlsText) (alert.Alert, bool) {
-	if record.contentType != typeAlert || len(record.fragment) != 2 {
-		return alert.Alert{}, false
+func (conn *Conn) handleAlert(fragment []byte) (valid bool, err error) {
+	if len(fragment) != 2 {
+		return false, errors.New("fragment size should be 2")
 	}
 
-	alert := alert.FromBytes([2]byte(record.fragment))
-	return alert, true
+	a := alert.FromBytes([2]byte(fragment))
+
+	// We close read side of connection on alert.
+	conn.mu.Lock()
+	conn.alertReceived = true
+	conn.mu.Unlock()
+
+	if a.Description != alert.CloseNotify {
+		// We received an error alert.
+		return true, errors.Wrapf(ErrSessionClosed, "remote sent an error alert: %s", a.Description)
+	}
+
+	return true, ErrSessionClosed
+}
+
+func (conn *Conn) handleNewSessionTicket(fragment []byte) (match bool, _ error) {
+	if conn.onNewSessionTicket == nil {
+		return false, nil
+	}
+
+	match, ticket, err := decodeNewSessionTicket(fragment)
+	if err != nil {
+		return false, errors.Wrap(err, "decoding new session ticket")
+	}
+
+	if !match {
+		return false, nil
+	}
+
+	// Inject session information.
+	ticket.Version = conn.session.Version
+	ticket.CipherSuite = conn.session.CipherSuite
+	ticket.ServerName = conn.session.ServerName
+
+	resumption, err := conn.session.ComputeResumpitonSecret()
+	if err != nil {
+		return true, errors.Wrap(err, "computing resumption secret")
+	}
+
+	psk, err := ComputePSK(conn.session.CipherSuite, resumption, ticket.Nonce)
+	if err != nil {
+		return true, errors.Wrap(err, "computing psk")
+	}
+
+	ticket.Key = psk
+
+	if err := conn.onNewSessionTicket(ticket); err != nil {
+		return true, errors.Wrap(err, "handling new session ticket on application")
+	}
+
+	return true, nil
+}
+
+// decodeNewSessionTicket decodes nst to ticket. some fields are not filled up.
+func decodeNewSessionTicket(fragment []byte) (ok bool, ticket Ticket, _ error) {
+	var nst handshake.NewSessionTicket
+	if err := handshake.FromBytes(fragment, &nst); err != nil {
+		if errors.Is(err, handshake.ErrNotExpectedHandshakeType) {
+			return false, Ticket{}, nil
+		}
+		err = errors.Wrap(err, "parsing new session ticket")
+		return true, Ticket{}, alert.NewError(err, alert.DecodeError)
+	}
+
+	ticket = Ticket{
+		Type:     PSKTypeResumption,
+		Ticket:   nst.Ticket,
+		AgeAdd:   time.Duration(nst.TicketAgeAdd) * time.Second,
+		LifeTime: time.Duration(nst.TicketLifetime) * time.Second,
+		Nonce:    nst.TicketNonce,
+	}
+
+	if edi := nst.ExtEarlyData; edi != nil {
+		ticket.EarlyDataLimit = edi.MaxEarlyDataSize
+	}
+
+	return true, ticket, nil
 }
 
 // We might receive KeyUpdate handshake message.
 // In this case, we update remote key first and update write key if needed.
-func (conn *Conn) handleKeyUpdate(fragment []byte) error {
-	echo, err := decodeKeyUpdate(fragment)
+func (conn *Conn) handleKeyUpdate(fragment []byte) (match bool, _ error) {
+	match, echo, err := decodeKeyUpdate(fragment)
 	if err != nil {
-		return errors.Wrap(err, "decoding key update")
+		return false, errors.Wrap(err, "decoding key update")
+	}
+
+	if !match {
+		return false, nil
 	}
 
 	if err := conn.in.updateKey(); err != nil {
-		return errors.Wrap(err, "updating read key")
+		return true, errors.Wrap(err, "updating read key")
 	}
 
 	if echo {
 		if err := conn.updateWriteKey(false, false); err != nil {
-			return errors.Wrap(err, "updating write key")
+			return true, errors.Wrap(err, "updating write key")
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
-func decodeKeyUpdate(fragment []byte) (echo bool, err error) {
+func decodeKeyUpdate(fragment []byte) (ok, echo bool, err error) {
 	var ku handshake.KeyUpdate
 	if err := handshake.FromBytes(fragment, &ku); err != nil {
 		if errors.Is(err, handshake.ErrNotExpectedHandshakeType) {
-			return false, alert.NewError(err, alert.UnexpectedMessage)
+			return false, false, nil
 		}
 		err = errors.Wrap(err, "parsing key update")
-		return false, alert.NewError(err, alert.DecodeError)
+		return true, false, alert.NewError(err, alert.DecodeError)
 	}
 
 	switch ku.RequestUpdate {
 	case handshake.UpdateNotRequested, handshake.UpdateRequested:
 	default:
-		return false, alert.NewError(errors.New("not an allowed value"), alert.IllegalParameter)
+		return true, false, alert.NewError(errors.New("not an allowed value"), alert.IllegalParameter)
 	}
 
 	echo = ku.RequestUpdate == handshake.UpdateNotRequested
 
-	return echo, nil
+	return true, echo, nil
 }
 
 // updateWriteKey updates write key and sends keyUpdate message.
@@ -495,6 +603,33 @@ func (conn *Conn) setTrafficKeys(
 	defer conn.in.Unlock()
 	if err := conn.in.setKey(theirs, suite); err != nil {
 		return errors.Wrap(err, "setting read_key")
+	}
+
+	return nil
+}
+
+// SendTicket sends resumption ticket. Only server-side connection can call this.
+// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.6.1
+func (conn *Conn) SendTicket(ticket Ticket) error {
+	if !conn.isServer {
+		return errors.New("only server can send ticket")
+	}
+
+	nst := handshake.NewSessionTicket{
+		TicketLifetime: uint32(ticket.LifeTime.Seconds()),
+		TicketAgeAdd:   uint32(ticket.AgeAdd.Seconds()),
+		TicketNonce:    ticket.Nonce,
+		Ticket:         ticket.Ticket,
+	}
+
+	if ticket.EarlyDataLimit > 0 {
+		nst.ExtEarlyData = &extension.EarlyDataNST{
+			MaxEarlyDataSize: ticket.EarlyDataLimit,
+		}
+	}
+
+	if err := conn.writeHandshake(&nst, nil); err != nil {
+		return errors.Wrap(err, "writing new session ticket")
 	}
 
 	return nil

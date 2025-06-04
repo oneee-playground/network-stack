@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 
 	"network-stack/session/tls/internal/util"
 
@@ -161,8 +160,31 @@ func (*KeyShareSH) newFrom(raw Raw) (Extension, error) {
 	return &k, nil
 }
 
+// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.9
+type PSKMode uint8
+
+var _ util.VectorConv = PSKMode(0)
+
+func (p PSKMode) Bytes() []byte {
+	return []byte{byte(p)}
+}
+
+func (p PSKMode) FromBytes(b []byte) (out util.VectorConv, rest []byte, err error) {
+	if len(b) < 1 {
+		return nil, nil, common.ErrNeedMoreBytes
+	}
+
+	out = PSKMode(b[0])
+	return out, b[1:], nil
+}
+
+const (
+	PSKModePSK_KE     PSKMode = 0
+	PSKModePSK_DHE_KE PSKMode = 1
+)
+
 type PskKeyExchangeModes struct {
-	KeModes []session.PSKMode
+	KeModes []PSKMode
 }
 
 var _ Extension = (*PskKeyExchangeModes)(nil)
@@ -180,7 +202,7 @@ func (k *PskKeyExchangeModes) Length() uint16 {
 
 func (*PskKeyExchangeModes) newFrom(raw Raw) (Extension, error) {
 	var k PskKeyExchangeModes
-	modes, _, err := util.FromVector[session.PSKMode](1, raw.data, false)
+	modes, _, err := util.FromVector[PSKMode](1, raw.data, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading modes")
 	}

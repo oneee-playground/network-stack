@@ -8,6 +8,7 @@ import (
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
+	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/transport"
 	"network-stack/transport/pipe"
 	"testing"
@@ -50,6 +51,7 @@ func (s *ConnTestSuite) SetupTest() {
 		maxChunkSize: maxRecordLen,
 		in:           newProtector(),
 		out:          newProtector(),
+		session:      &Session{},
 	}
 	s.c2 = &Conn{
 		underlying:   c2,
@@ -60,6 +62,7 @@ func (s *ConnTestSuite) SetupTest() {
 		maxChunkSize: maxRecordLen,
 		in:           newProtector(),
 		out:          newProtector(),
+		session:      &Session{},
 	}
 
 	s.exampleRawRecord = tlsText{
@@ -139,8 +142,9 @@ func (s *ConnTestSuite) TestWriteKeyUpdate() {
 	decrypted, err := s.c2.in.decrypt(got)
 	s.Require().NoError(err)
 
-	echo, err := decodeKeyUpdate(decrypted.fragment)
+	ok, echo, err := decodeKeyUpdate(decrypted.fragment)
 	s.NoError(err)
+	s.True(ok)
 	s.True(echo)
 }
 
@@ -150,23 +154,65 @@ func (s *ConnTestSuite) TestHandleKeyUpdate() {
 	// Indicates echo == true
 	ku := handshake.KeyUpdate{RequestUpdate: handshake.UpdateNotRequested}
 
-	s.Require().NoError(s.c1.handleKeyUpdate(handshake.ToBytes(&ku)))
+	match, err := s.c1.handleKeyUpdate(handshake.ToBytes(&ku))
+	s.Require().NoError(err)
+	s.Require().True(match)
 
 	// This should be key update.
 	got := tlsText{}
-	_, err := got.fillFrom(s.c2.underlying)
+	_, err = got.fillFrom(s.c2.underlying)
 	s.Require().NoError(err)
 
 	decrypted, err := s.c2.in.decrypt(got)
 	s.Require().NoError(err)
 
-	echo, err := decodeKeyUpdate(decrypted.fragment)
+	ok, echo, err := decodeKeyUpdate(decrypted.fragment)
 	s.NoError(err)
+	s.True(ok)
 	s.False(echo)
 
 	// Check keys are updated.
 	s.Require().NoError(s.c2.in.updateKey())
 	s.Equal(s.c2.in.secret, s.c1.out.secret)
+}
+
+func (s *ConnTestSuite) TestHandleNewSessionTicket() {
+	nst := handshake.NewSessionTicket{
+		TicketLifetime: 0,
+		TicketAgeAdd:   0,
+		TicketNonce:    []byte("nonce"),
+		Ticket:         []byte("ticket"),
+		ExtEarlyData: &extension.EarlyDataNST{
+			MaxEarlyDataSize: 1,
+		},
+	}
+
+	s.c1.session.Version = common.VersionTLS13
+	s.c1.session.CipherSuite = s.ciphersuite
+	s.c1.session.ServerName = "www.example.com"
+	s.c1.session.secret = []byte("secret")
+	s.c1.session.transcript = s.ciphersuite.Hash().New()
+
+	s.c1.onNewSessionTicket = func(ticket Ticket) error {
+		// Already validated in decodeNewSessionTicket.
+		s.Equal(nst.TicketLifetime, uint32(ticket.LifeTime.Seconds()))
+		s.Equal(nst.TicketAgeAdd, uint32(ticket.AgeAdd.Seconds()))
+		s.Equal(nst.TicketNonce, ticket.Nonce)
+		s.Equal(nst.Ticket, ticket.Ticket)
+		s.Equal(nst.ExtEarlyData.MaxEarlyDataSize, ticket.EarlyDataLimit)
+
+		s.Equal(common.VersionTLS13, ticket.Version)
+		s.Equal(s.ciphersuite.ID(), ticket.CipherSuite.ID())
+		s.Equal("www.example.com", ticket.ServerName)
+		s.NotNil(ticket.Key)
+
+		return nil
+	}
+
+	match, err := s.c1.handleNewSessionTicket(handshake.ToBytes(&nst))
+	s.Require().NoError(err)
+	s.Require().True(match)
+
 }
 
 func (s *ConnTestSuite) TestWriteRecordAndKeyUpdate() {
@@ -192,8 +238,9 @@ func (s *ConnTestSuite) TestWriteRecordAndKeyUpdate() {
 	decrypted, err = s.c2.in.decrypt(got)
 	s.Require().NoError(err)
 
-	echo, err := decodeKeyUpdate(decrypted.fragment)
+	ok, echo, err := decodeKeyUpdate(decrypted.fragment)
 	s.NoError(err)
+	s.True(ok)
 	s.True(echo)
 
 	// Check keys are updated.
@@ -209,8 +256,7 @@ func (s *ConnTestSuite) TestSendAlert() {
 	_, err := got.fillFrom(s.c2.underlying)
 	s.Require().NoError(err)
 
-	a, ok := maybeAlert(got)
-	s.Require().True(ok)
+	a := alert.FromBytes([2]byte(got.fragment))
 	s.Equal(alert.Alert{Level: alert.LevelWarning, Description: alert.CloseNotify}, a)
 }
 
@@ -222,9 +268,40 @@ func (s *ConnTestSuite) TestSendAlertError() {
 	_, err := got.fillFrom(s.c2.underlying)
 	s.Require().NoError(err)
 
-	a, ok := maybeAlert(got)
-	s.Require().True(ok)
+	a := alert.FromBytes([2]byte(got.fragment))
 	s.Equal(alert.Alert{Level: alert.LevelFatal, Description: alert.DecodeError}, a)
+}
+
+func (s *ConnTestSuite) TestSendTicket() {
+	ticket := Ticket{
+		Type:           PSKTypeResumption,
+		Ticket:         []byte("ticket"),
+		Key:            []byte("key"),
+		LifeTime:       time.Second,
+		AgeAdd:         time.Second,
+		Nonce:          []byte("nonce"),
+		EarlyDataLimit: 1,
+		Version:        common.VersionTLS12,
+		CipherSuite:    s.ciphersuite,
+		ServerName:     "www.example.com",
+	}
+
+	// c2 is server.
+	s.Require().NoError(s.c2.SendTicket(ticket))
+
+	got := tlsText{}
+	_, err := got.fillFrom(s.c1.underlying)
+	s.Require().NoError(err)
+
+	var nst handshake.NewSessionTicket
+	s.Require().NoError(handshake.FromBytes(got.fragment, &nst))
+
+	s.Equal(uint32(ticket.LifeTime.Seconds()), nst.TicketLifetime)
+	s.Equal(uint32(ticket.AgeAdd.Seconds()), nst.TicketAgeAdd)
+	s.Equal(ticket.Nonce, nst.TicketNonce)
+	s.Equal(ticket.Ticket, nst.Ticket)
+	s.Require().NotNil(nst.ExtEarlyData)
+	s.Equal(ticket.EarlyDataLimit, nst.ExtEarlyData.MaxEarlyDataSize)
 }
 
 func (s *ConnTestSuite) TestActuallyReadRecord() {
@@ -500,12 +577,36 @@ func (s *ProtectorTestSuite) TestUpdateKey() {
 
 func TestDecodeKeyUpdate(t *testing.T) {
 	ku := handshake.KeyUpdate{RequestUpdate: handshake.UpdateNotRequested}
-	echo, err := decodeKeyUpdate(handshake.ToBytes(&ku))
+	ok, echo, err := decodeKeyUpdate(handshake.ToBytes(&ku))
 	assert.NoError(t, err)
+	assert.True(t, ok)
 	assert.True(t, echo)
 
 	ku = handshake.KeyUpdate{RequestUpdate: handshake.UpdateRequested}
-	echo, err = decodeKeyUpdate(handshake.ToBytes(&ku))
+	ok, echo, err = decodeKeyUpdate(handshake.ToBytes(&ku))
 	assert.NoError(t, err)
+	assert.True(t, ok)
 	assert.False(t, echo)
+}
+
+func TestDecodeNewSessionTicket(t *testing.T) {
+	nst := handshake.NewSessionTicket{
+		TicketLifetime: 0,
+		TicketAgeAdd:   0,
+		TicketNonce:    []byte("nonce"),
+		Ticket:         []byte("ticket"),
+		ExtEarlyData: &extension.EarlyDataNST{
+			MaxEarlyDataSize: 1,
+		},
+	}
+
+	ok, ticket, err := decodeNewSessionTicket(handshake.ToBytes(&nst))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	assert.Equal(t, nst.TicketLifetime, uint32(ticket.LifeTime.Seconds()))
+	assert.Equal(t, nst.TicketAgeAdd, uint32(ticket.AgeAdd.Seconds()))
+	assert.Equal(t, nst.TicketNonce, ticket.Nonce)
+	assert.Equal(t, nst.Ticket, ticket.Ticket)
+	assert.Equal(t, nst.ExtEarlyData.MaxEarlyDataSize, ticket.EarlyDataLimit)
 }

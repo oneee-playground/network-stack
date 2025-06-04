@@ -6,7 +6,6 @@ import (
 	"io"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake/extension"
@@ -40,8 +39,6 @@ type HandshakeClientOptions struct {
 	// on initial ClientHello.
 	OfferKeyExchangeMethods []keyexchange.Group
 
-	PreSharedKeys []session.PreSharedKey
-
 	// Only use psk for key exchange.
 	PSKOnly bool
 
@@ -49,12 +46,30 @@ type HandshakeClientOptions struct {
 	ServerName string
 
 	EarlyData *earlyDataWriter
+
+	OnNewSessionTicket func(ticket Ticket) error
+	// GetPreSharedKeys gets psk of given spec.
+	// keyUsed is the indication of which key is used. it will either send index of the key, or be closed, meaning not used.
+	GetPreSharedKeys func(
+		ciphersuites []ciphersuite.Suite,
+		serverName string,
+		keyUsed <-chan uint,
+	) ([]PreSharedKey, error)
 }
 
 type HandshakeServerOptions struct {
 	HandshakeOptions
 
 	RequireServerName bool
+
+	// GetTicketsFromPSKs retrieves ticket from given cipher suite and psk information.
+	// It should retrieve most preferred ticket using given spec. If not found, it should return idx of <0.
+	// keyUsed is the indication of whether key is used. it will either send empty struct, or be closed, meaning not used.
+	GetTicketsFromPSKs func(
+		selectedSuite ciphersuite.Suite,
+		psks []PSKInfo,
+		keyUsed <-chan struct{},
+	) (idx int, ticket Ticket, err error)
 }
 
 type handshaker interface {
@@ -141,7 +156,7 @@ func computeFinishedHash(
 }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.11.2
-func computePSKBinderEntry(suite ciphersuite.Suite, t session.PSKType, earlySecret, transcriptHash []byte) ([]byte, error) {
+func computePSKBinderEntry(suite ciphersuite.Suite, t PSKType, earlySecret, transcriptHash []byte) ([]byte, error) {
 	binderKey, err := hkdf.DeriveSecret(suite, earlySecret, string(t)+" binder", transcriptHash)
 	if err != nil {
 		return nil, errors.Wrap(err, "deriving binder key")
@@ -153,4 +168,23 @@ func computePSKBinderEntry(suite ciphersuite.Suite, t session.PSKType, earlySecr
 	}
 
 	return binderEntry, nil
+}
+
+// Used for deriving handshake_secret, master_secret.
+func deriveNextSecret(suite ciphersuite.Suite, current, salt []byte) ([]byte, error) {
+	if salt == nil {
+		salt = make([]byte, suite.Hash().Size())
+	}
+
+	derivedSecret, err := hkdf.DeriveSecret(suite, current, "derived", nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "deriving deriveSecret")
+	}
+
+	nextSecret, err := hkdf.Extract(suite, salt, derivedSecret)
+	if err != nil {
+		return nil, errors.Wrap(err, "deriving next secret")
+	}
+
+	return nextSecret, nil
 }

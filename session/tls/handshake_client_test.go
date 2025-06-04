@@ -10,12 +10,12 @@ import (
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
 	"network-stack/session/tls/internal/handshake/extension"
 	"testing"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/assert"
@@ -80,60 +80,112 @@ func (s *ClientHandshakerTestSuite) SetupTest() {
 }
 
 func (s *ClientHandshakerTestSuite) TestMakeClientHello() {
-	ch, err := s.hs.makeClientHello()
-	s.Require().NoError(err)
-	s.Require().NotNil(ch)
+	testcases := []struct {
+		desc       string
+		modifyOpts func(opts *HandshakeClientOptions)
+		expect     func(ch *handshake.ClientHello)
+		wantErr    bool
+	}{
+		{
+			desc:       "exmaple",
+			modifyOpts: func(opts *HandshakeClientOptions) {},
+			expect: func(ch *handshake.ClientHello) {
+				// Validate fields.
+				s.Equal(common.VersionTLS12, ch.Version)
+				s.Len(ch.Random, 32)
+				s.Empty(ch.SessionID)
+				s.Empty(ch.CompressionMethods)
+				s.Equal([]ciphersuite.ID{s.ciphersuite.ID()}, ch.CipherSuites)
 
-	// Validate fields.
-	s.Equal(common.VersionTLS12, ch.Version)
-	s.Len(ch.Random, 32)
-	s.Empty(ch.SessionID)
-	s.Empty(ch.CompressionMethods)
-	s.Equal([]ciphersuite.ID{s.ciphersuite.ID()}, ch.CipherSuites)
+				// Supported Versions
+				s.Require().NotNil(ch.ExtSupportedVersions)
+				s.Equal([]common.Version{common.VersionTLS13}, ch.ExtSupportedVersions.Versions)
 
-	// Supported Versions
-	s.Require().NotNil(ch.ExtSupportedVersions)
-	s.Equal([]common.Version{common.VersionTLS13}, ch.ExtSupportedVersions.Versions)
+				// Signature Algorithms
+				s.Require().NotNil(ch.ExtSignatureAlgos)
+				expectedSigAlgos := signature.AsSchemes(s.opts.SignatureAlgos)
+				s.Equal(expectedSigAlgos, ch.ExtSignatureAlgos.SupportedAlgos)
 
-	// Signature Algorithms
-	s.Require().NotNil(ch.ExtSignatureAlgos)
-	expectedSigAlgos := signature.AsSchemes(s.opts.SignatureAlgos)
-	s.Equal(expectedSigAlgos, ch.ExtSignatureAlgos.SupportedAlgos)
+				// Supported Groups (key exchange)
+				s.Require().NotNil(ch.ExtSupportedGroups)
+				s.Equal(keyexchange.AsIDs(s.opts.KeyExchangeMethods), ch.ExtSupportedGroups.NamedGroupList)
 
-	// Supported Groups (key exchange)
-	s.Require().NotNil(ch.ExtSupportedGroups)
-	s.Equal(keyexchange.AsIDs(s.opts.KeyExchangeMethods), ch.ExtSupportedGroups.NamedGroupList)
+				// Early Data. TODO: Support this.
+				s.Nil(ch.ExtEarlyData)
 
-	// Early Data. TODO: Support this.
-	s.Nil(ch.ExtEarlyData)
+				// Certificate extensions.
+				s.Require().NotNil(ch.ExtSignatureAlgosCert)
+				s.Equal(s.hs.certStore.signatureAlgosCert, ch.ExtSignatureAlgosCert.SupportedAlgos)
 
-	// Certificate extensions.
-	s.Require().NotNil(ch.ExtSignatureAlgosCert)
-	s.Equal(s.hs.certStore.signatureAlgosCert, ch.ExtSignatureAlgosCert.SupportedAlgos)
+				s.Require().NotNil(ch.ExtCertAuthorities)
+				expectedCAs := sliceutil.Map(s.hs.certStore.certAuthorities, func(ca []byte) extension.DistinguishedName { return ca })
+				s.Equal(expectedCAs, ch.ExtCertAuthorities.Authorities)
 
-	s.Require().NotNil(ch.ExtCertAuthorities)
-	expectedCAs := sliceutil.Map(s.hs.certStore.certAuthorities, func(ca []byte) extension.DistinguishedName { return ca })
-	s.Equal(expectedCAs, ch.ExtCertAuthorities.Authorities)
+				// Server Name
+				s.Require().NotNil(ch.ExtServerNameList)
+				s.Require().Len(ch.ExtServerNameList.ServerNameList, 1)
+				serverName := ch.ExtServerNameList.ServerNameList[0]
+				s.Equal(extension.ServerNameTypeHostName, serverName.NameType)
+				s.Equal([]byte("example.com"), serverName.Name)
 
-	// Server Name
-	s.Require().NotNil(ch.ExtServerNameList)
-	s.Require().Len(ch.ExtServerNameList.ServerNameList, 1)
-	serverName := ch.ExtServerNameList.ServerNameList[0]
-	s.Equal(extension.ServerNameTypeHostName, serverName.NameType)
-	s.Equal([]byte("example.com"), serverName.Name)
+				// Key Share
+				s.Require().NotNil(ch.ExtKeyShares)
+				s.Require().Len(ch.ExtKeyShares.KeyShares, 1)
+				s.Equal(s.keGroup.ID(), ch.ExtKeyShares.KeyShares[0].Group)
 
-	// Key Share
-	s.Require().NotNil(ch.ExtKeyShares)
-	s.Require().Len(ch.ExtKeyShares.KeyShares, 1)
-	s.Equal(s.keGroup.ID(), ch.ExtKeyShares.KeyShares[0].Group)
+				s.Require().NotNil(ch.ExtALPN)
+				s.Require().Len(ch.ExtALPN.ProtocolNameList, 1)
+				s.Equal(extension.ALPNProtocolName("example"), ch.ExtALPN.ProtocolNameList[0])
 
-	s.Require().NotNil(ch.ExtALPN)
-	s.Require().Len(ch.ExtALPN.ProtocolNameList, 1)
-	s.Equal(extension.ALPNProtocolName("example"), ch.ExtALPN.ProtocolNameList[0])
+				// Pre-Shared Key
+				s.Nil(ch.ExtPreSharedKey)
+				s.Nil(ch.ExtPskMode)
+			},
+		},
+		{
+			desc: "psk",
+			modifyOpts: func(opts *HandshakeClientOptions) {
+				opts.GetPreSharedKeys = func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+					return []PreSharedKey{
+						{
+							Type:          PSKTypeResumption,
+							Identity:      []byte("hi"),
+							ObfuscatedAge: time.Hour,
+							CipherSuite:   s.ciphersuite,
+							Key:           []byte("key"),
+						},
+					}, nil
+				}
+			},
+			expect: func(ch *handshake.ClientHello) {
+				// Skip validating other fields.
 
-	// Pre-Shared Key
-	s.Nil(ch.ExtPreSharedKey)
-	s.Nil(ch.ExtPskMode)
+				// Pre-Shared Key
+				s.NotNil(ch.ExtPskMode)
+				s.Require().NotNil(ch.ExtPreSharedKey)
+
+				// Detailed test is at injectPSKExtensions.
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		s.Run(tc.desc, func() {
+			s.hs.opts = s.opts
+
+			tc.modifyOpts(&s.hs.opts)
+
+			ch, err := s.hs.makeClientHello()
+			if tc.wantErr {
+				s.Require().Error(err)
+				return
+			}
+			s.Require().NoError(err)
+			s.Require().NotNil(ch)
+
+			tc.expect(ch)
+		})
+	}
 }
 
 func (s *ClientHandshakerTestSuite) TestValidateServerHello() {
@@ -307,13 +359,13 @@ func (s *ClientHandshakerTestSuite) TestValidateServerHello() {
 }
 
 func (s *ClientHandshakerTestSuite) TestRemakeCH() {
-	s.hs.session.cipherSuite = s.ciphersuite
+	s.hs.session.CipherSuite = s.ciphersuite
 	s.hs.session.transcript = s.ciphersuite.Hash().New()
 
 	testcases := []struct {
 		desc string
 
-		changeOptions func(opts *HandshakeClientOptions)
+		changeState func(hs *clientHandshaker)
 
 		hrr *handshake.ServerHello
 
@@ -323,10 +375,10 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 	}{
 		{
 			desc: "example",
-			changeOptions: func(opts *HandshakeClientOptions) {
+			changeState: func(hs *clientHandshaker) {
 				x25519, _ := keyexchange.Get(keyexchange.Group_X25519)
 
-				opts.KeyExchangeMethods = []keyexchange.Group{
+				hs.opts.KeyExchangeMethods = []keyexchange.Group{
 					s.keGroup, x25519,
 				}
 			},
@@ -346,8 +398,8 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			},
 		},
 		{
-			desc:          "key share not offered",
-			changeOptions: func(opts *HandshakeClientOptions) {},
+			desc:        "key share not offered",
+			changeState: func(hs *clientHandshaker) {},
 			hrr: &handshake.ServerHello{
 				ExtKeyShareHRR: &extension.KeyShareHRR{
 					SelectedGroup: keyexchange.Group_X448,
@@ -357,8 +409,8 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			wantErr:       true,
 		},
 		{
-			desc:          "key share already offered",
-			changeOptions: func(opts *HandshakeClientOptions) {},
+			desc:        "key share already offered",
+			changeState: func(hs *clientHandshaker) {},
 			hrr: &handshake.ServerHello{
 				ExtKeyShareHRR: &extension.KeyShareHRR{
 					SelectedGroup: s.keGroup.ID(),
@@ -368,38 +420,42 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			wantErr:       true,
 		},
 		{
-			desc: "psk is filtered",
-			changeOptions: func(opts *HandshakeClientOptions) {
+			desc: "remake psk",
+			changeState: func(hs *clientHandshaker) {
 				suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_256_GCM_SHA384)
 
-				opts.PreSharedKeys = []session.PreSharedKey{
-					{
-						Type:                session.PSKTypeResumption,
-						Identity:            []byte("this lives"),
-						ObfuscatedTicketAge: 0,
-						CipherSuite:         s.ciphersuite,
-					},
-					{
-						Type:                session.PSKTypeResumption,
-						Identity:            []byte("this is discarded"),
-						ObfuscatedTicketAge: 0,
-						CipherSuite:         suite,
-					},
+				hs.notifyPSKUsed = make(chan uint) // for preventing closing nil chan.
+				hs.opts.GetPreSharedKeys = func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+					return []PreSharedKey{
+						{
+							Type:          PSKTypeResumption,
+							Identity:      []byte("1"),
+							ObfuscatedAge: 0,
+							CipherSuite:   s.ciphersuite,
+						},
+						{
+							Type:          PSKTypeResumption,
+							Identity:      []byte("2"),
+							ObfuscatedAge: 0,
+							CipherSuite:   suite,
+						},
+					}, nil
 				}
 			},
 			hrr:     &handshake.ServerHello{},
 			changed: true,
 			checkResultCH: func(ch *handshake.ClientHello) {
 				s.Require().NotNil(ch.ExtPreSharedKey)
-				s.Require().Len(ch.ExtPreSharedKey.Binders, 1)
-				s.Require().Len(ch.ExtPreSharedKey.Identities, 1)
+				s.Require().Len(ch.ExtPreSharedKey.Binders, 2)
+				s.Require().Len(ch.ExtPreSharedKey.Identities, 2)
 
-				s.Equal([]byte("this lives"), ch.ExtPreSharedKey.Identities[0].Identity)
+				s.Equal([]byte("1"), ch.ExtPreSharedKey.Identities[0].Identity)
+				s.Equal([]byte("2"), ch.ExtPreSharedKey.Identities[1].Identity)
 			},
 		},
 		{
 			desc:          "unchanged",
-			changeOptions: func(opts *HandshakeClientOptions) {},
+			changeState:   func(hs *clientHandshaker) {},
 			hrr:           &handshake.ServerHello{},
 			changed:       false,
 			checkResultCH: func(ch *handshake.ClientHello) {},
@@ -413,7 +469,7 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			kePriv, kePub, err := s.keGroup.KeyExchange().GenKeyPair(rand.Reader)
 			s.Require().NoError(err)
 
-			s.hs.keyCandidates = map[keyexchange.GroupID]keyExchange{
+			s.hs.keyCandidates = map[keyexchange.GroupID]keyCandidate{
 				s.keGroup.ID(): {
 					method:  s.keGroup.KeyExchange(),
 					privKey: kePriv,
@@ -421,7 +477,7 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 				},
 			}
 
-			tc.changeOptions(&s.hs.opts)
+			tc.changeState(s.hs)
 
 			initialCH := handshake.ClientHello{ExtEarlyData: &extension.EarlyDataCH{}}
 
@@ -448,7 +504,7 @@ func (s *ClientHandshakerTestSuite) TestSaveKeyExchangeSpec() {
 	}
 
 	s.Require().NoError(s.hs.saveKeyExchangeSpec(sh))
-	s.Equal(sh.CipherSuite, s.hs.session.cipherSuite.ID())
+	s.Equal(sh.CipherSuite, s.hs.session.CipherSuite.ID())
 	s.NotNil(s.hs.session.transcript)
 
 	// Not offered
@@ -457,8 +513,8 @@ func (s *ClientHandshakerTestSuite) TestSaveKeyExchangeSpec() {
 }
 
 func (s *ClientHandshakerTestSuite) TestCheckKeyExchangeSpec() {
-	s.hs.session.version = common.VersionTLS12
-	s.hs.session.cipherSuite = s.ciphersuite
+	s.hs.session.Version = common.VersionTLS12
+	s.hs.session.CipherSuite = s.ciphersuite
 
 	sh := &handshake.ServerHello{
 		Version:     common.VersionTLS12,
@@ -539,14 +595,14 @@ func (s *ClientHandshakerTestSuite) TestSaveNegotiatedSpec() {
 
 	for _, tc := range testcases {
 		s.Run(tc.desc, func() {
-			s.hs.session.cipherSuite = s.ciphersuite
+			s.hs.session.CipherSuite = s.ciphersuite
 			s.hs.session.transcript = s.ciphersuite.Hash().New()
 			s.hs.conn = &Conn{in: newProtector(), out: newProtector()}
 
 			kePriv, kePub, err := s.keGroup.KeyExchange().GenKeyPair(rand.Reader)
 			s.Require().NoError(err)
 
-			s.hs.keyCandidates = map[keyexchange.GroupID]keyExchange{
+			s.hs.keyCandidates = map[keyexchange.GroupID]keyCandidate{
 				s.keGroup.ID(): {
 					method:  s.keGroup.KeyExchange(),
 					privKey: kePriv,
@@ -670,15 +726,15 @@ func TestInjectPSKExtensions(t *testing.T) {
 
 	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
 
-	psk := session.PreSharedKey{
-		Type:                session.PSKTypeResumption,
-		Identity:            []byte("A"),
-		ObfuscatedTicketAge: 0,
-		CipherSuite:         suite,
+	psk := PreSharedKey{
+		Type:          PSKTypeResumption,
+		Identity:      []byte("A"),
+		ObfuscatedAge: 0,
+		CipherSuite:   suite,
 	}
 	pskOnly := true
 
-	candidates, err := injectPSKExtensions(ch, []session.PreSharedKey{psk}, pskOnly)
+	candidates, err := injectPSKExtensions(ch, []PreSharedKey{psk}, pskOnly)
 	require.NoError(t, err)
 
 	assert.Len(t, candidates, 1)
@@ -689,7 +745,7 @@ func TestInjectPSKExtensions(t *testing.T) {
 
 	require.NotNil(t, ch.ExtPskMode)
 	require.Len(t, ch.ExtPskMode.KeModes, 1)
-	assert.Equal(t, session.PSKModePSK_KE, ch.ExtPskMode.KeModes[0])
+	assert.Equal(t, extension.PSKModePSK_KE, ch.ExtPskMode.KeModes[0])
 }
 
 func TestDetermineSelectedVersion(t *testing.T) {

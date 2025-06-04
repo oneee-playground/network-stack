@@ -9,15 +9,16 @@ import (
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
 	"network-stack/session/tls/internal/handshake/extension"
 	"testing"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -118,7 +119,7 @@ func (s *ServerHandshakerTestSuite) TestSaveSpecFromCH() {
 					serverNames:             []string{"example.com"},
 				}
 				s.Equal(&expected, cri)
-				s.Equal(s.ciphersuite.ID(), session.cipherSuite.ID())
+				s.Equal(s.ciphersuite.ID(), session.CipherSuite.ID())
 				s.NotNil(session.transcript)
 			},
 		},
@@ -362,8 +363,8 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 			s.hs.usedMostPreferredKE = false
 			s.hs.earlySecret = nil
 			s.hs.sharedSecret = nil
-			s.hs.session.version = common.VersionTLS13
-			s.hs.session.cipherSuite = s.ciphersuite
+			s.hs.session.Version = common.VersionTLS13
+			s.hs.session.CipherSuite = s.ciphersuite
 			s.hs.conn = &Conn{in: newProtector(), out: newProtector()}
 			s.hs.opts = s.opts
 
@@ -381,6 +382,34 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 			s.Error(err)
 		})
 	}
+}
+
+func (s *ServerHandshakerTestSuite) TestGetTicketFromPSK() {
+	s.hs.session.CipherSuite = s.ciphersuite
+
+	psk := &extension.PreSharedKeyCH{
+		Identities: []extension.PSKIdentity{
+			{Identity: []byte("hey"), ObfuscatedTicketAge: 0},
+		},
+	}
+
+	ticket := Ticket{}
+
+	s.hs.opts.GetTicketsFromPSKs = func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, ticket Ticket, err error) {
+		s.Require().Equal(s.ciphersuite.ID(), selectedSuite.ID())
+
+		s.Require().Len(psks, 1)
+		s.Equal([]byte("hey"), psks[0].Identity)
+		s.Equal(time.Duration(0), psks[0].ObfuscatedAge)
+
+		return 0, ticket, nil
+	}
+
+	idx, got, keyUsed, err := s.hs.getTicketFromPSK(psk)
+	s.Require().NoError(err)
+	s.NotNil(keyUsed)
+	s.Equal(0, idx)
+	s.Equal(ticket, got)
 }
 
 func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
@@ -412,8 +441,8 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 			modifyExampleCH: func(ch *handshake.ClientHello) {
 				ch.ExtSupportedGroups = nil
 				ch.ExtPreSharedKey = &extension.PreSharedKeyCH{}
-				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []session.PSKMode{
-					session.PSKModePSK_KE,
+				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []extension.PSKMode{
+					extension.PSKModePSK_KE,
 				}}
 			},
 			wantErr: false,
@@ -422,8 +451,8 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 			desc: "example (psk, psk_dhe_ke)",
 			modifyExampleCH: func(ch *handshake.ClientHello) {
 				ch.ExtPreSharedKey = &extension.PreSharedKeyCH{}
-				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []session.PSKMode{
-					session.PSKModePSK_DHE_KE,
+				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []extension.PSKMode{
+					extension.PSKModePSK_DHE_KE,
 				}}
 			},
 			wantErr: false,
@@ -433,8 +462,8 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 			modifyExampleCH: func(ch *handshake.ClientHello) {
 				ch.ExtSupportedGroups = nil
 				ch.ExtPreSharedKey = &extension.PreSharedKeyCH{}
-				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []session.PSKMode{
-					session.PSKModePSK_DHE_KE,
+				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []extension.PSKMode{
+					extension.PSKModePSK_DHE_KE,
 				}}
 			},
 			wantErr: true,
@@ -452,8 +481,8 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 			desc: "invalid (psk, supported groups on psk_ke)",
 			modifyExampleCH: func(ch *handshake.ClientHello) {
 				ch.ExtPreSharedKey = &extension.PreSharedKeyCH{}
-				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []session.PSKMode{
-					session.PSKModePSK_KE,
+				ch.ExtPskMode = &extension.PskKeyExchangeModes{KeModes: []extension.PSKMode{
+					extension.PSKModePSK_KE,
 				}}
 			},
 			wantErr: true,
@@ -603,4 +632,29 @@ func TestDetermineSupportedVersions(t *testing.T) {
 			assert.Equal(t, tc.wantVers, vers)
 		})
 	}
+}
+
+func TestMakeCHForPSKBinder(t *testing.T) {
+	ch := &handshake.ClientHello{
+		ExtPreSharedKey: &extension.PreSharedKeyCH{
+			Identities: []extension.PSKIdentity{
+				{},
+			},
+			Binders: []extension.PSKBinderEntry{
+				extension.PSKBinderEntry("hey"),
+			},
+		},
+	}
+
+	newCH := makeCHForPSKBinder(ch)
+
+	require.NotNil(t, newCH.ExtPreSharedKey)
+	require.Len(t, newCH.ExtPreSharedKey.Binders, 1)
+	assert.Len(t, newCH.ExtPreSharedKey.Binders[0], len(ch.ExtPreSharedKey.Binders[0]))
+	assert.Equal(t, make(extension.PSKBinderEntry, len("hey")), newCH.ExtPreSharedKey.Binders[0])
+
+	newCH.ExtPreSharedKey = nil
+	ch.ExtPreSharedKey = nil
+
+	assert.Equal(t, ch, newCH)
 }

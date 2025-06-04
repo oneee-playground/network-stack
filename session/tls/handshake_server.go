@@ -5,16 +5,18 @@ import (
 	"crypto/hmac"
 	"crypto/x509/pkix"
 	"hash"
+	"network-stack/lib/misc"
 	sliceutil "network-stack/lib/slice"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
-	"network-stack/session/tls/common/session"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/alert"
 	"network-stack/session/tls/internal/handshake"
 	"network-stack/session/tls/internal/handshake/extension"
+	"network-stack/session/tls/internal/util/hkdf"
 	"slices"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	"github.com/pkg/errors"
@@ -110,7 +112,7 @@ func (s *serverHandshaker) keyExchange() (err error) {
 
 	// On HRR, we use message_hash instead of initial client hello.
 	// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.1
-	messageHash := handshake.MakeMessageHash(s.session.cipherSuite, clientHello)
+	messageHash := handshake.MakeMessageHash(s.session.CipherSuite, clientHello)
 	s.session.transcript.Reset()
 	s.session.transcript.Write(handshake.ToBytes(messageHash))
 	s.session.transcript.Write(handshake.ToBytes(serverHello))
@@ -135,14 +137,14 @@ func (s *serverHandshaker) saveSpecFromCH(ch *handshake.ClientHello) error {
 
 	// Select version. It only supports TLS 1.3 at the moment.
 	version := common.VersionTLS13
-	s.session.version = version
+	s.session.Version = version
 
 	suite, ok := s.selectCipherSuite(ch.CipherSuites)
 	if !ok {
 		return errors.New("no common cipher suites")
 	}
 
-	s.session.cipherSuite = suite
+	s.session.CipherSuite = suite
 	s.session.transcript = suite.Hash().New()
 
 	if s.certStore.wantAuth() {
@@ -188,15 +190,18 @@ func (s *serverHandshaker) sendServerHello(
 	transcript hash.Hash,
 ) (*handshake.ServerHello, error) {
 	sh, err := s.makeServerHello(clientHello)
-	if err != nil && !sh.IsHelloRetry() {
+	if err != nil && (sh == nil || !sh.IsHelloRetry()) {
 		return nil, errors.Wrap(err, "creating server hello")
 	}
 
-	if sh.IsHelloRetry() {
-		if retried {
+	if retried {
+		if sh.IsHelloRetry() {
 			err := errors.Wrap(err, "cannot retry anymore")
 			return nil, alert.NewError(err, alert.HandshakeFailure)
 		}
+
+		// We didn't write it when we got client hello.
+		s.session.transcript.Write(handshake.ToBytes(clientHello))
 	}
 
 	if err := s.conn.writeHandshake(sh, transcript); err != nil {
@@ -234,20 +239,20 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 	sh = &handshake.ServerHello{
 		Version:           common.VersionTLS12,
 		Random:            random,
-		CipherSuite:       s.session.cipherSuite.ID(),
+		CipherSuite:       s.session.CipherSuite.ID(),
 		SessionIDEcho:     ch.SessionID,
 		CompressionMethod: 0x00,
 	}
 
-	if s.session.version == common.VersionTLS13 {
+	if s.session.Version == common.VersionTLS13 {
 		// We don't need to do this since we reject versions other than TLS 1.3.
 		// But I'll leave it for future use.
-		if b, warn := warnHijacked(s.session.version); warn {
+		if b, warn := warnHijacked(s.session.Version); warn {
 			copy(sh.Random[24:32], b)
 		}
 	}
 
-	sh.ExtSupportedVersions = &extension.SupportedVersionsSH{SelectedVersion: s.session.version}
+	sh.ExtSupportedVersions = &extension.SupportedVersionsSH{SelectedVersion: s.session.Version}
 
 	if alpn := ch.ExtALPN; len(s.opts.SupportedProtocols) > 0 && alpn != nil {
 		selected, found := s.selectProtocol(alpn.ProtocolNameList)
@@ -313,16 +318,94 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 	if psk := ch.ExtPreSharedKey; psk != nil {
 		_ = ch.ExtPskMode.KeModes[0] // Just indicating it exists.
 
-		for _, id := range psk.Identities {
-			_, ok := s.getSession(id.Identity)
-			// TODO: later.
-			_ = ok
+		idx, ticket, keyUsed, err := s.getTicketFromPSK(psk)
+		if err != nil {
+			return nil, errors.Wrap(err, "getting ticket")
+		}
+		defer close(keyUsed)
 
-			s.earlySecret = nil
+		if idx >= 0 {
+			receivedBinder := psk.Binders[idx]
+
+			earlySecret, err := hkdf.Extract(s.session.CipherSuite, ticket.Key, nil)
+			if err != nil {
+				return nil, errors.Wrap(err, "deriving early secret")
+			}
+
+			transcript := misc.CopyHash(s.session.transcript)
+			transcript.Write(handshake.ToBytes(makeCHForPSKBinder(ch)))
+
+			if err := s.validatePSKBinder(receivedBinder, earlySecret, transcript.Sum(nil), ticket); err != nil {
+				return nil, errors.Wrap(err, "invalid psk binder value")
+			}
+
+			s.earlySecret = earlySecret
+			sh.ExtPreSharedKey = &extension.PreSharedKeySH{SelectedIdentity: uint16(idx)}
+
+			keyUsed <- struct{}{}
 		}
 	}
 
 	return sh, nil
+}
+
+func (s *serverHandshaker) getTicketFromPSK(psk *extension.PreSharedKeyCH) (int, Ticket, chan<- struct{}, error) {
+	keyUsed := make(chan struct{}, 1)
+	suite := s.session.CipherSuite
+
+	if s.opts.GetTicketsFromPSKs == nil {
+		return -1, Ticket{}, keyUsed, nil
+	}
+
+	infos := sliceutil.Map(psk.Identities, func(id extension.PSKIdentity) PSKInfo {
+		return PSKInfo{
+			Identity:      id.Identity,
+			ObfuscatedAge: time.Duration(id.ObfuscatedTicketAge) * time.Millisecond,
+		}
+	})
+
+	idx, ticket, err := s.opts.GetTicketsFromPSKs(suite, infos, keyUsed)
+	if err != nil {
+		return 0, Ticket{}, nil, errors.Wrap(err, "getting ticket from psk")
+	}
+
+	if idx >= len(infos) {
+		close(keyUsed)
+		return 0, Ticket{}, nil, errors.New("index not less than given length")
+	}
+
+	return idx, ticket, keyUsed, err
+}
+
+func makeCHForPSKBinder(ch *handshake.ClientHello) *handshake.ClientHello {
+	ret := *ch
+
+	ret.ExtPreSharedKey = &extension.PreSharedKeyCH{
+		Identities: ch.ExtPreSharedKey.Identities,
+	}
+
+	for _, binder := range ch.ExtPreSharedKey.Binders {
+		ret.ExtPreSharedKey.Binders = append(
+			ret.ExtPreSharedKey.Binders,
+			extension.PSKBinderEntry(make([]byte, len(binder))),
+		)
+	}
+
+	return &ret
+}
+
+func (s *serverHandshaker) validatePSKBinder(received, earlySecret, transcript []byte, ticket Ticket) error {
+	computed, err := computePSKBinderEntry(s.session.CipherSuite, ticket.Type, earlySecret, transcript)
+	if err != nil {
+		return errors.Wrap(err, "computing binder entry")
+	}
+
+	if !bytes.Equal(computed, received) {
+		err := errors.New("binder value doesn't match")
+		return alert.NewError(err, alert.IllegalParameter)
+	}
+
+	return nil
 }
 
 func warnHijacked(negotiated common.Version) (_ []byte, warn bool) {
@@ -332,11 +415,6 @@ func warnHijacked(negotiated common.Version) (_ []byte, warn bool) {
 	case negotiated <= common.VersionTLS11:
 		return handshake.DowngradeTLS11[:], true
 	}
-	return nil, false
-}
-
-func (s *serverHandshaker) getSession(identity []byte) (session any, found bool) {
-	_ = identity
 	return nil, false
 }
 
@@ -403,6 +481,10 @@ func (s *serverHandshaker) selectProtocol(
 func (s *serverHandshaker) saveNegotiatedSpec() error {
 	s.conn.protocol = s.protocol
 
+	if s.earlySecret != nil {
+		s.session.resumed = true
+	}
+
 	if err := s.session.setEarlySecret(s.earlySecret); err != nil {
 		return errors.Wrap(err, "setting early secret")
 	}
@@ -449,7 +531,12 @@ func (s *serverHandshaker) validateClientHello(ch *handshake.ClientHello) error 
 	}
 
 	needDHEKey := true
-	if ch.ExtPreSharedKey != nil {
+	if psk := ch.ExtPreSharedKey; psk != nil {
+		if len(psk.Binders) != len(psk.Identities) {
+			err := errors.New("binder count should be equal to identity count")
+			return alert.NewError(err, alert.IllegalParameter)
+		}
+
 		// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.9
 		mode := ch.ExtPskMode
 		if mode == nil || len(mode.KeModes) == 0 {
@@ -458,7 +545,7 @@ func (s *serverHandshaker) validateClientHello(ch *handshake.ClientHello) error 
 
 		// We'll only use first element for simplicity.
 		// (+ RFC doesn't specify what to do with multiple values)
-		if mode.KeModes[0] == session.PSKModePSK_KE {
+		if mode.KeModes[0] == extension.PSKModePSK_KE {
 			needDHEKey = false
 		}
 	}
@@ -473,7 +560,7 @@ func (s *serverHandshaker) validateClientHello(ch *handshake.ClientHello) error 
 }
 
 func (s *serverHandshaker) recvRetriedHello(initial *handshake.ClientHello) (*handshake.ClientHello, error) {
-	retriedHello, err := s.recvClientHello(s.session.transcript)
+	retriedHello, err := s.recvClientHello(nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "receiving client hello")
 	}

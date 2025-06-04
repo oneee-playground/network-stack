@@ -97,3 +97,27 @@ func (s *ConnCompatibilityTestSuite) SetupTest() {
 	s.Require().NoError(<-errchan)
 	s.Require().NoError(<-errchan)
 }
+
+func (s *ConnCompatibilityTestSuite) TestNewSessionTicket() {
+	ticket := Ticket{
+		Type:   PSKTypeResumption,
+		Ticket: []byte("ticket"),
+		Nonce:  []byte("nonce"),
+	}
+
+	s.C1.(*Conn).onNewSessionTicket = func(got Ticket) error {
+		s.Equal(ticket.Type, got.Type)
+		s.Equal(ticket.Ticket, got.Ticket)
+		s.Equal(ticket.Nonce, got.Nonce)
+		return nil
+	}
+
+	s.Require().NoError(s.C2.(*Conn).SendTicket(ticket))
+	n, err := s.C2.Write(make([]byte, 1))
+	s.Require().NoError(err)
+	s.Require().Equal(1, n)
+
+	n, err = s.C1.Read(make([]byte, 1))
+	s.Require().NoError(err)
+	s.Require().Equal(1, n)
+}
