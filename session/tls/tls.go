@@ -18,10 +18,11 @@ import (
 // Unimplemented:
 // - TLS 1.2 Compatibility.
 // -  https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2.1
-// - Post Handshake Auth
+// - Post Handshake Auth (maybe not?)
 // - Extensions: OID filters.
-// - 0-RTT.
 // - Handshake Timeout
+// - Session Ticket storage
+// - Error handling in Early data.
 
 type RecordOptions struct {
 	HandshakeTimeout time.Duration

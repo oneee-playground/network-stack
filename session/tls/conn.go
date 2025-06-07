@@ -43,12 +43,12 @@ type Conn struct {
 
 	in, out protector
 
+	earlyDataHandler *earlyDataHandler
+
 	inBuf   []byte       // For read of records.
 	dataBuf bytes.Reader // For reading decrypted data.
 
 	lastHandshake []byte
-
-	protocol string
 }
 
 var _ transport.BufferedConn = (*Conn)(nil)
@@ -59,11 +59,6 @@ func (conn *Conn) LocalAddr() transport.Addr    { return conn.underlying.LocalAd
 func (conn *Conn) RemoteAddr() transport.Addr   { return conn.underlying.RemoteAddr() }
 func (conn *Conn) SetReadDeadLine(t time.Time)  { conn.underlying.SetReadDeadLine(t) }
 func (conn *Conn) SetWriteDeadLine(t time.Time) { conn.underlying.SetWriteDeadLine(t) }
-
-// Empty means no negotiated protocol.
-func (conn *Conn) Protocol() string {
-	return conn.protocol
-}
 
 func (conn *Conn) Session() Session { return *conn.session }
 
@@ -164,6 +159,18 @@ func (conn *Conn) readRecordMaybeKeyUpdate(wantType contentType, decrypt, keyUpd
 		return tlsText{}, errors.Wrap(err, "actually reading record")
 	}
 
+	if conn.handshaking && record.contentType == typeApplicationData && conn.earlyDataHandler != nil {
+		// It might be early data. Try to decrypt it with early secret.
+		used, err := conn.earlyDataHandler.feed(record)
+		if err != nil {
+			return tlsText{}, errors.Wrap(err, "processing potential early data")
+		}
+
+		if used {
+			return conn.readRecordMaybeKeyUpdate(wantType, decrypt, keyUpdate)
+		}
+	}
+
 	if decrypt {
 		record, err = conn.in.decrypt(record)
 		if err != nil {
@@ -178,7 +185,8 @@ func (conn *Conn) readRecordMaybeKeyUpdate(wantType contentType, decrypt, keyUpd
 		}
 
 		if !handled {
-			return record, errors.Errorf("unexpected content type: %d", record.contentType)
+			err := errors.Errorf("unexpected content type: %d", record.contentType)
+			return record, alert.NewError(err, alert.UnexpectedMessage)
 		}
 
 		return conn.readRecordMaybeKeyUpdate(wantType, decrypt, false)
@@ -733,6 +741,7 @@ func (p *protector) getNonce() []byte {
 }
 
 func (p *protector) incrNonce() { p.nonce.Add(p.nonce, big.NewInt(1)) }
+func (p *protector) decrNonce() { p.nonce.Add(p.nonce, big.NewInt(-1)) }
 
 // Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-7.3
 func (p *protector) setKey(secret []byte, suite ciphersuite.Suite) error {

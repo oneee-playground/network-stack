@@ -53,7 +53,6 @@ type clientHandshaker struct {
 
 	// Encrypted extensions.
 	clientCert bool
-	earlyData  bool
 }
 
 func newHandshakerClient(conn *Conn, clock clock.Clock, opts HandshakeClientOptions) (*clientHandshaker, error) {
@@ -110,10 +109,10 @@ func (c *clientHandshaker) keyExchange() (err error) {
 		return errors.Wrap(err, "sending client hello")
 	}
 
-	// // Early data is allowed after initial hello.
-	// if err := c.startEarlyData(); err != nil {
-	// 	return errors.Wrap(err, "starting to send early data")
-	// }
+	// Early data is allowed after initial hello.
+	if err := c.startEarlyData(initialCH); err != nil {
+		return errors.Wrap(err, "starting to send early data")
+	}
 
 	serverHello, err = c.recvServerHello(initialCH, nil)
 	if err != nil {
@@ -151,8 +150,8 @@ func (c *clientHandshaker) keyExchange() (err error) {
 	}
 
 	if serverHello.IsHelloRetry() {
-		// Server cannot send hello retry more than once.
-		err := errors.New("unexpected hello retry")
+		// Server cannot send HRR more than once.
+		err := errors.New("unexpected HRR")
 		return alert.NewError(err, alert.UnexpectedMessage)
 	}
 
@@ -240,8 +239,20 @@ func (c *clientHandshaker) makeClientHello() (*handshake.ClientHello, error) {
 
 	// Make pre-shared key.
 	if c.opts.GetPreSharedKeys != nil {
+		var maxEarlyDataSize uint32
+		if edw := c.opts.EarlyData; edw != nil {
+			maxEarlyDataSize = edw.maxEarlyData
+		}
+
 		c.notifyPSKUsed = make(chan uint, 1)
-		keys, err := c.opts.GetPreSharedKeys(c.opts.CipherSuites, c.certStore.serverName, c.notifyPSKUsed)
+
+		keys, err := c.opts.GetPreSharedKeys(
+			c.opts.CipherSuites,
+			c.certStore.serverName,
+			maxEarlyDataSize,
+			c.opts.SupportedProtocols,
+			c.notifyPSKUsed,
+		)
 		if err != nil {
 			return nil, errors.Wrap(err, "getting pre-shared keys")
 		}
@@ -386,9 +397,9 @@ func (c *clientHandshaker) sendClientHello() (ch *handshake.ClientHello, err err
 	return ch, c.conn.writeHandshake(ch, nil)
 }
 
-func (c *clientHandshaker) startEarlyData() error {
-	earlyData := c.opts.EarlyData
-	if earlyData == nil {
+func (c *clientHandshaker) startEarlyData(ch *handshake.ClientHello) error {
+	edw := c.opts.EarlyData
+	if edw == nil {
 		return nil
 	}
 
@@ -398,14 +409,14 @@ func (c *clientHandshaker) startEarlyData() error {
 
 	// If pre-shared keys exist, use first one as an input.
 	// Reference: https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.10
-	candidate := c.pskCandidates[0]
-	cipherSuite := candidate.cipherSuite
+	cand := c.pskCandidates[0]
 
-	if err := earlyData.p.setKey(candidate.secret, cipherSuite); err != nil {
-		return errors.Wrap(err, "setting key for early data")
+	hash := cand.cipherSuite.Hash().New()
+	hash.Write(handshake.ToBytes(ch))
+
+	if err := edw.start(c.conn, cand.cipherSuite, cand.secret, hash.Sum(nil)); err != nil {
+		return errors.Wrap(err, "starting early data")
 	}
-
-	earlyData.start(c.conn)
 
 	return nil
 }
@@ -593,7 +604,13 @@ func (c *clientHandshaker) remakeCH(
 	}
 
 	// Early data is not allowed after HRR.
-	newHello.ExtEarlyData = nil
+	if edw := c.opts.EarlyData; edw != nil {
+		edw.notifyRejected()
+		c.opts.EarlyData = nil
+		newHello.ExtEarlyData = nil
+
+		changed = true
+	}
 
 	// Include a cookie extension if one was provided in the HRR.
 	if cookie := hrr.ExtCookie; cookie != nil {
@@ -612,7 +629,14 @@ func (c *clientHandshaker) remakeCH(
 		newHello.ExtPreSharedKey = nil
 
 		c.notifyPSKUsed = make(chan uint, 1)
-		keys, err := c.opts.GetPreSharedKeys([]ciphersuite.Suite{suite}, c.certStore.serverName, c.notifyPSKUsed)
+
+		keys, err := c.opts.GetPreSharedKeys(
+			[]ciphersuite.Suite{suite},
+			c.certStore.serverName,
+			0,
+			c.opts.SupportedProtocols,
+			c.notifyPSKUsed,
+		)
 		if err != nil {
 			return nil, false, errors.Wrap(err, "getting pre-shared keys")
 		}
@@ -681,7 +705,7 @@ func (c *clientHandshaker) checkKeyExchangeSpec(serverHello *handshake.ServerHel
 func (c *clientHandshaker) saveNegotiatedSpec(serverHello *handshake.ServerHello) (err error) {
 	if alpn := serverHello.ExtALPN; len(c.opts.SupportedProtocols) > 0 && alpn != nil {
 		selected := string(alpn.ProtocolNameList[0])
-		c.conn.protocol = selected
+		c.session.ALPN = selected
 	}
 
 	var earlySecret []byte
@@ -767,20 +791,19 @@ func (c *clientHandshaker) recvEncryptedExtensions() (*handshake.EncryptedExtens
 }
 
 func (c *clientHandshaker) saveParameters(ee *handshake.EncryptedExtensions) error {
-	if earlyData := c.opts.EarlyData; earlyData != nil {
-		edi := ee.ExtEarlyData
+	if edw := c.opts.EarlyData; edw != nil {
+		ealryDataIndication := ee.ExtEarlyData
 
-		if edi != nil {
-			// Early data is allowed.
-			c.earlyData = true
-		} else {
+		if ealryDataIndication == nil {
 			// Early data rejected. Notify it to the application.
-			earlyData.notifyRejected()
+			edw.notifyRejected()
+			c.opts.EarlyData = nil
 		}
 	}
 
 	if sni := ee.ExtServerNameList; sni != nil {
-		// Maybe see if there is SNI? But it is useless for now.
+		// Server used SNI.
+		c.session.ServerName = c.certStore.serverName
 	}
 
 	return nil
@@ -895,6 +918,10 @@ func (c *clientHandshaker) authentication() error {
 				return errors.Wrap(err, "sending certificate verify")
 			}
 		}
+	}
+
+	if err := c.waitForEarlyData(); err != nil {
+		return errors.Wrap(err, "waiting for early data")
 	}
 
 	if err := c.sendFinished(); err != nil {
@@ -1015,6 +1042,21 @@ func (c *clientHandshaker) sendFinished() error {
 	if err := c.conn.writeHandshake(&fin, c.session.transcript); err != nil {
 		return errors.Wrap(err, "writing finished")
 	}
+
+	return nil
+}
+
+func (c *clientHandshaker) waitForEarlyData() error {
+	edw := c.opts.EarlyData
+	if edw == nil {
+		return nil
+	}
+
+	// edw can now send EOED.
+	edw.notifyFinished()
+
+	// wait until it sends EOED.
+	<-edw.wait()
 
 	return nil
 }

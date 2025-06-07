@@ -145,7 +145,13 @@ func (s *ClientHandshakerTestSuite) TestMakeClientHello() {
 		{
 			desc: "psk",
 			modifyOpts: func(opts *HandshakeClientOptions) {
-				opts.GetPreSharedKeys = func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+				opts.GetPreSharedKeys = func(
+					ciphersuites []ciphersuite.Suite,
+					serverName string,
+					maxEarlyData uint32,
+					protocols []string,
+					keyUsed <-chan uint,
+				) ([]PreSharedKey, error) {
 					return []PreSharedKey{
 						{
 							Type:          PSKTypeResumption,
@@ -425,7 +431,13 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 				suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_256_GCM_SHA384)
 
 				hs.notifyPSKUsed = make(chan uint) // for preventing closing nil chan.
-				hs.opts.GetPreSharedKeys = func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+				hs.opts.GetPreSharedKeys = func(
+					ciphersuites []ciphersuite.Suite,
+					serverName string,
+					maxEarlyData uint32,
+					protocols []string,
+					keyUsed <-chan uint,
+				) ([]PreSharedKey, error) {
 					return []PreSharedKey{
 						{
 							Type:          PSKTypeResumption,
@@ -460,6 +472,17 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			changed:       false,
 			checkResultCH: func(ch *handshake.ClientHello) {},
 		},
+		{
+			desc: "reject early data",
+			changeState: func(hs *clientHandshaker) {
+				hs.opts.EarlyData = NewEarlyDataWriter(0)
+			},
+			hrr:     &handshake.ServerHello{},
+			changed: true,
+			checkResultCH: func(ch *handshake.ClientHello) {
+				s.Nil(ch.ExtEarlyData)
+			},
+		},
 	}
 
 	for _, tc := range testcases {
@@ -489,8 +512,6 @@ func (s *ClientHandshakerTestSuite) TestRemakeCH() {
 			s.Require().NoError(err)
 
 			s.Equal(tc.changed, changed)
-
-			s.Nil(newCH.ExtEarlyData)
 
 			tc.checkResultCH(newCH)
 		})
@@ -621,7 +642,17 @@ func (s *ClientHandshakerTestSuite) TestSaveNegotiatedSpec() {
 }
 
 func (s *ClientHandshakerTestSuite) TestSaveParameters() {
-	// TODO: Make it after 0-RTT.
+	s.hs.opts.EarlyData = NewEarlyDataWriter(0)
+	s.hs.certStore.serverName = "example"
+
+	err := s.hs.saveParameters(&handshake.EncryptedExtensions{
+		ExtServerNameList: &extension.ServerNameList{},
+	})
+	s.Require().NoError(err)
+
+	s.Nil(s.opts.EarlyData)
+	s.Equal("example", s.hs.session.ServerName)
+
 }
 
 func (s *ClientHandshakerTestSuite) TestValidateCertRequest() {

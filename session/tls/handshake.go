@@ -49,10 +49,17 @@ type HandshakeClientOptions struct {
 
 	OnNewSessionTicket func(ticket Ticket) error
 	// GetPreSharedKeys gets psk of given spec.
+	// It should find the matching psk that satisfies below:
+	// 1. key is encrypted with one of: cipherSuites.
+	// 2. key is issued on server of: serverName.
+	// 3. key can handle early data of size: earlyDataSize.
+	// 3. key must use one of the provided alpns. ordered in preference.
 	// keyUsed is the indication of which key is used. it will either send index of the key, or be closed, meaning not used.
 	GetPreSharedKeys func(
 		ciphersuites []ciphersuite.Suite,
 		serverName string,
+		earlyDataSize uint32,
+		protocols []string,
 		keyUsed <-chan uint,
 	) ([]PreSharedKey, error)
 }
@@ -62,12 +69,16 @@ type HandshakeServerOptions struct {
 
 	RequireServerName bool
 
+	// OnEarlyData should be non-blocking.
+	OnEarlyData func(r io.Reader, alpn string)
+
 	// GetTicketsFromPSKs retrieves ticket from given cipher suite and psk information.
 	// It should retrieve most preferred ticket using given spec. If not found, it should return idx of <0.
 	// keyUsed is the indication of whether key is used. it will either send empty struct, or be closed, meaning not used.
 	GetTicketsFromPSKs func(
 		selectedSuite ciphersuite.Suite,
 		psks []PSKInfo,
+		protocol string,
 		keyUsed <-chan struct{},
 	) (idx int, ticket Ticket, err error)
 }

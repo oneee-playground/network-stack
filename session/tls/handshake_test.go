@@ -4,12 +4,14 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"io"
 	"network-stack/session/tls/common"
 	"network-stack/session/tls/common/ciphersuite"
 	"network-stack/session/tls/common/keyexchange"
 	"network-stack/session/tls/common/signature"
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/transport/pipe"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,6 +70,9 @@ func testHandshake(t *testing.T, clock clock.Clock, clientOpts HandshakeClientOp
 	require.NoError(t, err)
 	sh, err := newHandshakerServer(c2, clock, serverOpts)
 	require.NoError(t, err)
+
+	c1.session = ch.session
+	c2.session = sh.session
 
 	errchan := make(chan error, 2)
 	go func() { errchan <- doHandshake(c1, ch) }()
@@ -296,8 +301,8 @@ func (s *HandshakeTestSuite) Test1RTTWithoutClientCertificateALPN() {
 
 	c1, c2 := testHandshake(s.T(), s.clock, clientOpts, serverOpts)
 
-	s.Require().Equal(c1.Protocol(), c2.Protocol())
-	s.Require().Equal("example", c2.Protocol())
+	s.Require().Equal(c1.Session().ALPN, c2.Session().ALPN)
+	s.Require().Equal("example", c2.Session().ALPN)
 }
 
 func (s *HandshakeTestSuite) Test1RTTWithPSK() {
@@ -336,7 +341,13 @@ func (s *HandshakeTestSuite) Test1RTTWithPSK() {
 		OfferKeyExchangeMethods: []keyexchange.Group{keGroup},
 		ServerName:              "www.example.com",
 		PSKOnly:                 false,
-		GetPreSharedKeys: func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+		GetPreSharedKeys: func(
+			ciphersuites []ciphersuite.Suite,
+			serverName string,
+			maxEarlyData uint32,
+			protocols []string,
+			keyUsed <-chan uint,
+		) ([]PreSharedKey, error) {
 			clientKeyUsed = keyUsed
 			return []PreSharedKey{TicketToPSK(ticket, 0)}, nil
 		},
@@ -349,7 +360,12 @@ func (s *HandshakeTestSuite) Test1RTTWithPSK() {
 			TrustedCerts:       []*x509.Certificate{s.rootCert},
 		},
 		RequireServerName: false,
-		GetTicketsFromPSKs: func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, _ Ticket, err error) {
+		GetTicketsFromPSKs: func(
+			selectedSuite ciphersuite.Suite,
+			psks []PSKInfo,
+			protocol string,
+			keyUsed <-chan struct{},
+		) (idx int, _ Ticket, err error) {
 			serverKeyUsed = keyUsed
 			return 0, ticket, nil
 		},
@@ -403,7 +419,13 @@ func (s *HandshakeTestSuite) Test2RTTWithPSKHelloRetry() {
 		OfferKeyExchangeMethods: []keyexchange.Group{}, // This will result in HRR.
 		ServerName:              "www.example.com",
 		PSKOnly:                 false,
-		GetPreSharedKeys: func(ciphersuites []ciphersuite.Suite, serverName string, keyUsed <-chan uint) ([]PreSharedKey, error) {
+		GetPreSharedKeys: func(
+			ciphersuites []ciphersuite.Suite,
+			serverName string,
+			maxEarlyData uint32,
+			protocols []string,
+			keyUsed <-chan uint,
+		) ([]PreSharedKey, error) {
 			clientKeyUsed = keyUsed
 			return []PreSharedKey{TicketToPSK(ticket, 0)}, nil
 		},
@@ -416,11 +438,120 @@ func (s *HandshakeTestSuite) Test2RTTWithPSKHelloRetry() {
 			TrustedCerts:       []*x509.Certificate{s.rootCert},
 		},
 		RequireServerName: false,
-		GetTicketsFromPSKs: func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, _ Ticket, err error) {
+		GetTicketsFromPSKs: func(
+			selectedSuite ciphersuite.Suite,
+			psks []PSKInfo,
+			protocol string,
+			keyUsed <-chan struct{},
+		) (idx int, _ Ticket, err error) {
 			serverKeyUsed = keyUsed
 			return 0, ticket, nil
 		},
 	}
+
+	_, _ = testHandshake(s.T(), s.clock, clientOpts, serverOpts)
+
+	idx, used := <-clientKeyUsed
+	s.True(used)
+	s.Equal(uint(0), idx)
+
+	_, used = <-serverKeyUsed
+	s.True(used)
+}
+
+func (s *HandshakeTestSuite) Test0RTTEarlyDataWithPSK() {
+	// 1. -> CH (psk, key_share)
+	// 2. <- SH (accept)
+	// 3. <- EE
+	// 4. <- Finished
+	// 5. -> Finished
+
+	suite, _ := ciphersuite.Get(ciphersuite.TLS_AES_128_GCM_SHA256)
+	keGroup, _ := keyexchange.Get(keyexchange.Group_Secp256r1)
+
+	ticket := Ticket{
+		Type:           PSKTypeResumption,
+		Ticket:         []byte("ticket"),
+		Key:            []byte("the psk"),
+		LifeTime:       0, // don't care here
+		AgeAdd:         0, // don't care here
+		Nonce:          []byte("the nonce"),
+		EarlyDataLimit: 100,
+		Version:        common.VersionTLS12,
+		CipherSuite:    suite,
+		ServerName:     "www.example.com",
+		ALPN:           "example",
+	}
+
+	var clientKeyUsed <-chan uint
+	var serverKeyUsed <-chan struct{}
+
+	edw := NewEarlyDataWriter(100)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	defer wg.Wait()
+
+	clientOpts := HandshakeClientOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+			SupportedProtocols: []string{"example"},
+		},
+		OfferKeyExchangeMethods: []keyexchange.Group{keGroup},
+		ServerName:              "www.example.com",
+		PSKOnly:                 false,
+		GetPreSharedKeys: func(
+			ciphersuites []ciphersuite.Suite,
+			serverName string,
+			maxEarlyData uint32,
+			protocols []string,
+			keyUsed <-chan uint,
+		) ([]PreSharedKey, error) {
+			clientKeyUsed = keyUsed
+			return []PreSharedKey{TicketToPSK(ticket, 0)}, nil
+		},
+		EarlyData: edw,
+	}
+	serverOpts := HandshakeServerOptions{
+		HandshakeOptions: HandshakeOptions{
+			Random:             rand.Reader,
+			CipherSuites:       []ciphersuite.Suite{suite},
+			KeyExchangeMethods: []keyexchange.Group{keGroup},
+			TrustedCerts:       []*x509.Certificate{s.rootCert},
+			SupportedProtocols: []string{"example"},
+		},
+		RequireServerName: false,
+		GetTicketsFromPSKs: func(
+			selectedSuite ciphersuite.Suite,
+			psks []PSKInfo,
+			protocol string,
+			keyUsed <-chan struct{},
+		) (idx int, _ Ticket, err error) {
+			serverKeyUsed = keyUsed
+			return 0, ticket, nil
+		},
+		OnEarlyData: func(r io.Reader, alpn string) {
+			s.Require().Equal("example", alpn)
+
+			go func() {
+				defer wg.Done()
+				b, err := io.ReadAll(r)
+				s.Require().NoError(err)
+				s.Len(b, 100)
+			}()
+		},
+	}
+
+	go func() {
+		defer wg.Done()
+		n, err := edw.Write(make([]byte, 100))
+		s.Require().NoError(err)
+		s.Equal(100, n)
+
+		s.Require().NoError(edw.Close())
+	}()
 
 	_, _ = testHandshake(s.T(), s.clock, clientOpts, serverOpts)
 

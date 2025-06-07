@@ -20,6 +20,7 @@ type Session struct {
 	Version     common.Version
 	CipherSuite ciphersuite.Suite
 	ServerName  string
+	ALPN        string
 }
 
 func (s *Session) setEarlySecret(secret []byte) (err error) {
@@ -111,6 +112,7 @@ type Ticket struct {
 	Version     common.Version
 	CipherSuite ciphersuite.Suite
 	ServerName  string
+	ALPN        string
 }
 
 func ComputePSK(suite ciphersuite.Suite, resumptionSecret []byte, nonce []byte) (psk []byte, err error) {

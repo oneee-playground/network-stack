@@ -88,7 +88,7 @@ func (s *ServerHandshakerTestSuite) TestSaveSpecFromCH() {
 	testcases := []struct {
 		desc    string
 		ch      *handshake.ClientHello
-		expect  func(session *Session, cri *certificateRequestInfo)
+		expect  func(session *Session, cri *certificateRequestInfo, edh *earlyDataHandler)
 		wantErr bool
 	}{
 		{
@@ -110,7 +110,7 @@ func (s *ServerHandshakerTestSuite) TestSaveSpecFromCH() {
 					},
 				},
 			},
-			expect: func(session *Session, cri *certificateRequestInfo) {
+			expect: func(session *Session, cri *certificateRequestInfo, edh *earlyDataHandler) {
 				expected := certificateRequestInfo{
 					requestContext:          nil,
 					signatureAlgorithms:     []signature.Scheme{signature.Scheme_ECDSA_SHA1},
@@ -121,6 +121,8 @@ func (s *ServerHandshakerTestSuite) TestSaveSpecFromCH() {
 				s.Equal(&expected, cri)
 				s.Equal(s.ciphersuite.ID(), session.CipherSuite.ID())
 				s.NotNil(session.transcript)
+
+				s.Require().Nil(edh)
 			},
 		},
 		{
@@ -147,7 +149,7 @@ func (s *ServerHandshakerTestSuite) TestSaveSpecFromCH() {
 				return
 			}
 			s.Require().NoError(err)
-			tc.expect(s.hs.session, &s.hs.certStore.remoteCertRequest)
+			tc.expect(s.hs.session, &s.hs.certStore.remoteCertRequest, s.hs.earlyDataHandler)
 		})
 	}
 }
@@ -386,6 +388,7 @@ func (s *ServerHandshakerTestSuite) TestMakeServerHello() {
 
 func (s *ServerHandshakerTestSuite) TestGetTicketFromPSK() {
 	s.hs.session.CipherSuite = s.ciphersuite
+	s.hs.protocol = "example"
 
 	psk := &extension.PreSharedKeyCH{
 		Identities: []extension.PSKIdentity{
@@ -395,9 +398,15 @@ func (s *ServerHandshakerTestSuite) TestGetTicketFromPSK() {
 
 	ticket := Ticket{}
 
-	s.hs.opts.GetTicketsFromPSKs = func(selectedSuite ciphersuite.Suite, psks []PSKInfo, keyUsed <-chan struct{}) (idx int, ticket Ticket, err error) {
+	s.hs.opts.GetTicketsFromPSKs = func(
+		selectedSuite ciphersuite.Suite,
+		psks []PSKInfo,
+		protocol string,
+		keyUsed <-chan struct{},
+	) (idx int, ticket Ticket, err error) {
 		s.Require().Equal(s.ciphersuite.ID(), selectedSuite.ID())
 
+		s.Equal(s.hs.protocol, protocol)
 		s.Require().Len(psks, 1)
 		s.Equal([]byte("hey"), psks[0].Identity)
 		s.Equal(time.Duration(0), psks[0].ObfuscatedAge)
@@ -550,11 +559,7 @@ func (s *ServerHandshakerTestSuite) TestValidateClientHello() {
 }
 
 func (s *ServerHandshakerTestSuite) TestMakeEncryptedExtensions() {
-	// TODO: later.
-}
-
-func (s *ServerHandshakerTestSuite) TestMakeCertRequest() {
-	// TODO: do we need it?
+	// TODO:
 }
 
 func TestWarnHijacked(t *testing.T) {

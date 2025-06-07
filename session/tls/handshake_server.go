@@ -16,6 +16,7 @@ import (
 	"network-stack/session/tls/internal/handshake/extension"
 	"network-stack/session/tls/internal/util/hkdf"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -32,8 +33,12 @@ type serverHandshaker struct {
 	session   *Session
 	certStore certStore
 
-	usedMostPreferredKE bool
-	clientCert          bool
+	earlyDataHandler *earlyDataHandler
+
+	usedMostPreferredKE  bool
+	clientCert           bool
+	usedMostPreferredPSK bool
+	maxEarlyDataSize     uint32
 
 	// cookie is opaque sequence of bytes to be used on HRR.
 	// RFC doesn't specify which parameters should consist the cookie.
@@ -104,6 +109,10 @@ func (s *serverHandshaker) keyExchange() (err error) {
 	}
 
 	if !serverHello.IsHelloRetry() {
+		if err := s.startOrRejectEarlyData(clientHello); err != nil {
+			return errors.Wrap(err, "starting early data")
+		}
+
 		// Add transcript.
 		s.session.transcript.Write(handshake.ToBytes(clientHello))
 		s.session.transcript.Write(handshake.ToBytes(serverHello))
@@ -180,6 +189,14 @@ func (s *serverHandshaker) saveSpecFromCH(ch *handshake.ClientHello) error {
 		s.certStore.remoteCertRequest = cri
 	}
 
+	if edi := ch.ExtEarlyData; s.opts.OnEarlyData != nil && edi != nil {
+		// Prepare to accept early data.
+		s.earlyDataHandler = &earlyDataHandler{handshakeP: &s.conn.in, p: newProtector()}
+		s.earlyDataHandler.cond.L = &sync.Mutex{}
+
+		s.conn.earlyDataHandler = s.earlyDataHandler
+	}
+
 	return nil
 }
 
@@ -202,6 +219,11 @@ func (s *serverHandshaker) sendServerHello(
 
 		// We didn't write it when we got client hello.
 		s.session.transcript.Write(handshake.ToBytes(clientHello))
+	}
+
+	if edh := s.earlyDataHandler; edh != nil && sh.IsHelloRetry() {
+		// Making it nil so we don't wait for EOED later.
+		edh.retried = true
 	}
 
 	if err := s.conn.writeHandshake(sh, transcript); err != nil {
@@ -343,6 +365,11 @@ func (s *serverHandshaker) makeServerHello(ch *handshake.ClientHello) (sh *hands
 			sh.ExtPreSharedKey = &extension.PreSharedKeySH{SelectedIdentity: uint16(idx)}
 
 			keyUsed <- struct{}{}
+
+			if idx == 0 {
+				s.usedMostPreferredPSK = true
+				s.maxEarlyDataSize = ticket.EarlyDataLimit
+			}
 		}
 	}
 
@@ -364,7 +391,7 @@ func (s *serverHandshaker) getTicketFromPSK(psk *extension.PreSharedKeyCH) (int,
 		}
 	})
 
-	idx, ticket, err := s.opts.GetTicketsFromPSKs(suite, infos, keyUsed)
+	idx, ticket, err := s.opts.GetTicketsFromPSKs(suite, infos, s.protocol, keyUsed)
 	if err != nil {
 		return 0, Ticket{}, nil, errors.Wrap(err, "getting ticket from psk")
 	}
@@ -479,7 +506,7 @@ func (s *serverHandshaker) selectProtocol(
 }
 
 func (s *serverHandshaker) saveNegotiatedSpec() error {
-	s.conn.protocol = s.protocol
+	s.conn.session.ALPN = s.protocol
 
 	if s.earlySecret != nil {
 		s.session.resumed = true
@@ -492,6 +519,37 @@ func (s *serverHandshaker) saveNegotiatedSpec() error {
 	if err := s.session.setHandshakeSecret(s.conn, s.sharedSecret); err != nil {
 		return errors.Wrap(err, "setting handshake secret")
 	}
+
+	return nil
+}
+
+func (s *serverHandshaker) startOrRejectEarlyData(ch *handshake.ClientHello) error {
+	edh := s.earlyDataHandler
+	if edh == nil {
+		return nil
+	}
+
+	if s.usedMostPreferredPSK {
+		edh.maxEarlyData = s.maxEarlyDataSize
+
+		// Early data is permitted.
+		suite := s.session.CipherSuite
+
+		hash := suite.Hash().New()
+		hash.Write(handshake.ToBytes(ch))
+
+		if err := setEarlyTrafficSecret(&edh.p, suite, s.earlySecret, hash.Sum(nil)); err != nil {
+			return errors.Wrap(err, "setting early secret for early data")
+		}
+
+		s.opts.OnEarlyData(edh, s.protocol)
+
+		return nil
+	}
+
+	// Early data is rejected.
+	edh.rejected = true
+	s.earlyDataHandler = nil
 
 	return nil
 }
@@ -576,6 +634,13 @@ func (s *serverHandshaker) recvRetriedHello(initial *handshake.ClientHello) (*ha
 		return nil, alert.NewError(err, alert.MissingExtension)
 	}
 
+	if edh := s.earlyDataHandler; edh != nil {
+		// No more early data should be received after second CH.
+		edh.expectNoMoreEarlyData()
+
+		s.earlyDataHandler = nil
+	}
+
 	return retriedHello, nil
 }
 
@@ -652,7 +717,9 @@ func (s *serverHandshaker) makeEncryptedExtensions() (*handshake.EncryptedExtens
 		}
 	}
 
-	// We'll implement early data later.
+	if s.earlyDataHandler != nil {
+		ee.ExtEarlyData = &extension.EarlyDataEE{}
+	}
 
 	return ee, nil
 }
@@ -845,9 +912,23 @@ func (s *serverHandshaker) validateCertVerify(verify *handshake.CertificateVerif
 }
 
 func (s *serverHandshaker) recvFinished() (*handshake.Finished, error) {
+	edh := s.earlyDataHandler
+
+	if edh != nil && edh.isFinished() {
+		// Somewhen before we sent finished, early data stream sent EOED.
+		err := errors.New("end of early data cannot be received before we send finished")
+		return nil, alert.NewError(err, alert.UnexpectedMessage)
+	}
+
 	var finished handshake.Finished
 	if _, err := s.conn.readHandshake(&finished, nil); err != nil {
 		return nil, errors.Wrap(err, "reading finished")
+	}
+
+	if edh != nil && !edh.isFinished() {
+		// EOED isn't received before we receive finished.
+		err := errors.New("end of early data should be received before finished")
+		return nil, alert.NewError(err, alert.UnexpectedMessage)
 	}
 
 	return &finished, nil
