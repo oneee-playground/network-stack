@@ -7,3 +7,11 @@ type Addr interface {
 
 	Version() uint
 }
+
+type Packet interface {
+	network.Packet
+
+	SrcAddr() Addr
+	DstAddr() Addr
+	NextProtocol() NextProto
+}
