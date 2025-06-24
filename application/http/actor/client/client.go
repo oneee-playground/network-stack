@@ -65,7 +65,7 @@ func New(
 	}
 
 	client.combineAddr = func(net ip.Addr, port uint16) transport.Addr {
-		return tcp.Addr{IPAddr: net, Port: port}
+		return tcp.NewAddr(net, port)
 	}
 
 	client.transfer = transfer.NewCodingApplier(opts.ExtraTransferCoders)

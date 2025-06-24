@@ -34,7 +34,7 @@ type Addr struct {
 }
 
 func (p Addr) NetworkAddr() network.Addr { return nil }
-func (p Addr) Identifier() any           { return p.Name }
+func (p Addr) Port() uint16              { return 0 }
 func (p Addr) String() string            { return p.Name }
 
 var _ transport.Addr = Addr{}
